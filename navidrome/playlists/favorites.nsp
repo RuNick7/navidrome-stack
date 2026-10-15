@@ -1,0 +1,10 @@
+{
+  "name": "Любимое",
+  "comment": "Все лайкнутые треки, свежие сверху",
+  "all": [
+    { "is": { "loved": true } }
+  ],
+  "sort": "dateloved",
+  "order": "desc",
+  "limit": 500
+}

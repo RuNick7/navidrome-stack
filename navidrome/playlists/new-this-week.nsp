@@ -1,0 +1,9 @@
+{
+  "name": "Новое за неделю",
+  "comment": "Треки, добавленные в библиотеку за 7 дней",
+  "all": [
+    { "inTheLast": { "dateadded": 7 } }
+  ],
+  "sort": "-dateadded",
+  "limit": 200
+}

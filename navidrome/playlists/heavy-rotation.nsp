@@ -1,0 +1,10 @@
+{
+  "name": "На повторе",
+  "comment": "Треки, сыгранные 5+ раз за последние 14 дней",
+  "all": [
+    { "inTheLast": { "lastplayed": 14 } },
+    { "gt": { "playcount": 4 } }
+  ],
+  "sort": "-playcount",
+  "limit": 40
+}

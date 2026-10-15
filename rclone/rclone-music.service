@@ -1,0 +1,38 @@
+# Монтирует зашифрованную папку Google Диска в /mnt/music.
+# Remote "gcrypt:" создаётся через `rclone config` (см. README, фаза 1).
+# Установка: scripts/setup-server.sh копирует файл в /etc/systemd/system/.
+
+[Unit]
+Description=rclone mount Google Drive music
+Wants=network-online.target
+After=network-online.target
+Before=docker.service
+
+[Service]
+Type=notify
+User=music
+Group=music
+Environment=RCLONE_CONFIG=/home/music/.config/rclone/rclone.conf
+ExecStartPre=/bin/mkdir -p /srv/rclone-cache
+ExecStart=/usr/bin/rclone mount gcrypt:music /mnt/music \
+  --allow-other \
+  --uid 1000 --gid 1000 --umask 002 \
+  --dir-cache-time 1000h \
+  --poll-interval 1m \
+  --vfs-cache-mode full \
+  --vfs-cache-max-size 45G \
+  --vfs-cache-max-age 720h \
+  --vfs-read-chunk-size 16M \
+  --vfs-read-chunk-size-limit 256M \
+  --vfs-write-back 30s \
+  --buffer-size 32M \
+  --cache-dir /srv/rclone-cache \
+  --drive-stop-on-upload-limit \
+  --tpslimit 8 \
+  --log-level INFO
+ExecStop=/bin/fusermount3 -uz /mnt/music
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

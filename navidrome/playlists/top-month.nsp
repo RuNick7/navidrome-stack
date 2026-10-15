@@ -1,0 +1,9 @@
+{
+  "name": "Топ месяца",
+  "comment": "Самое прослушиваемое из того, что играло за 30 дней",
+  "all": [
+    { "inTheLast": { "lastplayed": 30 } }
+  ],
+  "sort": "-playcount",
+  "limit": 50
+}

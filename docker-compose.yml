@@ -1,0 +1,183 @@
+# Базовый стек: navidrome + caddy.
+# Дополнительные сервисы включаются профилями:
+#   docker compose --profile discovery up -d   # slskd + explo
+#   docker compose --profile ai up -d          # AudioMuse-AI
+# Профили можно комбинировать: COMPOSE_PROFILES=discovery,ai в .env
+
+name: navidrome-stack
+
+x-common: &common
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  navidrome:
+    <<: *common
+    image: deluan/navidrome:${NAVIDROME_VERSION}
+    user: "${PUID}:${PGID}"
+    environment:
+      TZ: ${TZ}
+      ND_MUSICFOLDER: /music
+      ND_DATAFOLDER: /data
+      ND_PLAYLISTSPATH: _playlists
+      ND_SCANNER_SCHEDULE: "@every 6h"
+      ND_DEFAULTLANGUAGE: ru
+      ND_ENABLEINSIGHTSCOLLECTOR: "false"
+      ND_TRANSCODINGCACHESIZE: 1GB
+      ND_IMAGECACHESIZE: 500MB
+      # Плагины: AudioMuse-AI (похожее по звучанию) и тексты песен
+      ND_PLUGINS_ENABLED: "true"
+      ND_PLUGINS_AUTORELOAD: "true"
+      ND_AGENTS: audiomuseai,lastfm,deezer
+      ND_LYRICSPRIORITY: .ttml,.elrc,.lrc,.txt,embedded,nd-lyrics
+      # Last.fm: похожие артисты/треки и скробблинг
+      ND_LASTFM_ENABLED: "true"
+      ND_LASTFM_APIKEY: ${LASTFM_API_KEY}
+      ND_LASTFM_SECRET: ${LASTFM_SECRET}
+      ND_LASTFM_LANGUAGE: ru
+      ND_LISTENBRAINZ_ENABLED: "true"
+    volumes:
+      - ./data/navidrome:/data
+      - ${MUSIC_DIR}:/music:ro,rslave
+      - ./navidrome/playlists:/music/_playlists:ro
+    ports:
+      - "127.0.0.1:4533:4533"
+
+  caddy:
+    <<: *common
+    image: caddy:${CADDY_VERSION}
+    environment:
+      ND_DOMAIN: ${ND_DOMAIN}
+      HTTPS_PORT: ${HTTPS_PORT}
+      ACME_EMAIL: ${ACME_EMAIL}
+    ports:
+      - "80:80"
+      - "${HTTPS_PORT}:${HTTPS_PORT}"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - navidrome
+
+  # --- profile: discovery -------------------------------------------------
+
+  slskd:
+    <<: *common
+    profiles: [discovery]
+    image: slskd/slskd:${SLSKD_VERSION}
+    user: "${PUID}:${PGID}"
+    environment:
+      TZ: ${TZ}
+      SLSKD_REMOTE_CONFIGURATION: "true"
+      SLSKD_SLSK_USERNAME: ${SLSK_USERNAME}
+      SLSKD_SLSK_PASSWORD: ${SLSK_PASSWORD}
+      SLSKD_SLSK_LISTEN_PORT: ${SLSK_LISTEN_PORT}
+      SLSKD_USERNAME: ${SLSKD_WEB_USERNAME}
+      SLSKD_PASSWORD: ${SLSKD_WEB_PASSWORD}
+      SLSKD_API_KEY: ${SLSKD_API_KEY}
+      SLSKD_DOWNLOADS_DIR: /downloads
+      SLSKD_INCOMPLETE_DIR: /incomplete
+      # Раздаём только локальную папку: сканирование Google Диска скачало бы всю библиотеку
+      SLSKD_SHARED_DIR: /shared
+      SLSKD_DOWNLOAD_SLOTS: ${SLSKD_DOWNLOAD_SLOTS}
+      SLSKD_UPLOAD_SLOTS: ${SLSKD_UPLOAD_SLOTS}
+      SLSKD_UPLOAD_SPEED_LIMIT: ${SLSKD_UPLOAD_SPEED_LIMIT_KIB}
+    volumes:
+      - ./data/slskd:/app
+      - ${BUFFER_DIR}/slskd/downloads:/downloads
+      - ${BUFFER_DIR}/slskd/incomplete:/incomplete
+      - ${BUFFER_DIR}/shared:/shared:ro
+    ports:
+      - "${SLSK_LISTEN_PORT}:${SLSK_LISTEN_PORT}"
+      - "127.0.0.1:5030:5030"
+
+  explo:
+    <<: *common
+    profiles: [discovery]
+    image: ghcr.io/lumepart/explo:${EXPLO_VERSION}
+    environment:
+      TZ: ${TZ}
+      PUID: ${PUID}
+      PGID: ${PGID}
+      WEB_UI: "true"
+      UI_USERNAME: ${EXPLO_UI_USERNAME}
+      UI_PASSWORD: ${EXPLO_UI_PASSWORD}
+    volumes:
+      - ./explo/explo.env:/opt/explo/.env
+      - ./data/explo:/opt/explo/config
+      - ${MUSIC_DIR}/explo:/data:rslave
+      - ${BUFFER_DIR}/slskd/downloads:/slskd
+    ports:
+      - "127.0.0.1:7288:7288"
+    depends_on:
+      - navidrome
+      - slskd
+
+  # --- profile: ai ---------------------------------------------------------
+
+  audiomuse-postgres:
+    <<: *common
+    profiles: [ai]
+    image: postgres:15-alpine
+    environment:
+      TZ: ${TZ}
+      POSTGRES_USER: ${AUDIOMUSE_DB_USER}
+      POSTGRES_PASSWORD: ${AUDIOMUSE_DB_PASSWORD}
+      POSTGRES_DB: audiomusedb
+    volumes:
+      - audiomuse-db:/var/lib/postgresql/data
+
+  audiomuse-flask:
+    <<: *common
+    profiles: [ai]
+    image: ghcr.io/neptunehub/audiomuse-ai:${AUDIOMUSE_VERSION}
+    environment: &audiomuse-env
+      SERVICE_TYPE: flask
+      TZ: ${TZ}
+      POSTGRES_USER: ${AUDIOMUSE_DB_USER}
+      POSTGRES_PASSWORD: ${AUDIOMUSE_DB_PASSWORD}
+      POSTGRES_DB: audiomusedb
+      POSTGRES_HOST: audiomuse-postgres
+      POSTGRES_PORT: "5432"
+      TEMP_DIR: /app/temp_audio
+      # Распознавание текста песен (Whisper) слишком тяжёлое для 8 ГБ RAM
+      LYRICS_ENABLED: "false"
+      INDEX_BUILD_WORKERS: "1"
+    volumes:
+      - audiomuse-temp-flask:/app/temp_audio
+      - audiomuse-plugins-flask:/app/plugin/installed
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      - audiomuse-postgres
+
+  audiomuse-worker:
+    <<: *common
+    profiles: [ai]
+    image: ghcr.io/neptunehub/audiomuse-ai:${AUDIOMUSE_VERSION}
+    environment:
+      <<: *audiomuse-env
+      SERVICE_TYPE: worker
+    volumes:
+      - audiomuse-temp-worker:/app/temp_audio
+      - audiomuse-plugins-worker:/app/plugin/installed
+    deploy:
+      resources:
+        limits:
+          memory: ${AUDIOMUSE_WORKER_MEM_LIMIT}
+    depends_on:
+      - audiomuse-postgres
+
+volumes:
+  caddy-data:
+  caddy-config:
+  audiomuse-db:
+  audiomuse-temp-flask:
+  audiomuse-temp-worker:
+  audiomuse-plugins-flask:
+  audiomuse-plugins-worker:

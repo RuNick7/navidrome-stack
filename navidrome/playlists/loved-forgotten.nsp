@@ -1,0 +1,11 @@
+{
+  "name": "Любимое, давно не слушал",
+  "comment": "Лайкнутые треки, которые не играли 60 дней",
+  "all": [
+    { "is": { "loved": true } },
+    { "notInTheLast": { "lastplayed": 60 } }
+  ],
+  "sort": "random",
+  "limit": 50,
+  "refreshDelay": "1d"
+}
