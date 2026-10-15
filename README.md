@@ -39,7 +39,7 @@ sudo -u music rclone config
 #   n) gdrive   -> type: drive, client_id/secret ваши, scope: drive
 #   n) gcrypt   -> type: crypt, remote: gdrive:navidrome, пароль + salt (сохраните их!)
 sudo systemctl enable --now rclone-music
-mkdir -p /mnt/music/explo /mnt/music/_playlists   # от пользователя music
+mkdir -p /mnt/music/explo /mnt/music/soulseek /mnt/music/_playlists   # от пользователя music
 ```
 
 Без пароля crypt библиотеку не расшифровать: храните его вне сервера.
@@ -73,8 +73,9 @@ cp explo/explo.env.example explo/explo.env && nano explo/explo.env   # ListenBra
 docker compose up -d
 ```
 
-- slskd: `http://127.0.0.1:5030` (через `ssh -L 5030:127.0.0.1:5030 <сервер>`).
-- Explo: `http://127.0.0.1:7288`, там же расписание (по умолчанию Weekly Exploration раз в неделю, 50 треков).
+- slskd: `https://<домен>:5031`, логин `SLSKD_WEB_*`. Скачанное сохраняется в `/mnt/music/soulseek` и появляется в Navidrome без команд (слежение за папкой, плюс скан раз в час).
+- Explo: `https://<домен>:7289`, логин `EXPLO_UI_*`, там же расписание (по умолчанию Weekly Exploration раз в неделю, 50 треков).
+- Порты меняются в `.env` (`SLSKD_HTTPS_PORT`, `EXPLO_HTTPS_PORT`) и должны быть открыты в ufw.
 - Порядок источников: Soulseek (MP3 320/FLAC, не ниже 256 kbps), затем YouTube Music.
 
 Готово, когда в Navidrome появился плейлист Weekly Exploration со скачанными треками и обложками.
@@ -114,6 +115,7 @@ ssh -L 8000:127.0.0.1:8000 <сервер>   # затем http://127.0.0.1:8000
 
 | Где | Значение | Настройка |
 |---|---|---|
+| Navidrome, скан | слежение за папкой + полный скан раз в час | `ND_SCANNER_SCHEDULE` |
 | Explo | ~50 треков в неделю (Weekly Exploration) | расписание в Explo UI |
 | Soulseek, загрузки | 3 одновременно | `SLSKD_DOWNLOAD_SLOTS` |
 | Soulseek, раздача | 2 слота, 2 МиБ/с, только локальная папка `shared` | `SLSKD_UPLOAD_*` |

@@ -24,7 +24,7 @@ services:
       ND_MUSICFOLDER: /music
       ND_DATAFOLDER: /data
       ND_PLAYLISTSPATH: _playlists
-      ND_SCANNER_SCHEDULE: "@every 6h"
+      ND_SCANNER_SCHEDULE: "@every 1h"
       ND_DEFAULTLANGUAGE: ru
       ND_ENABLEINSIGHTSCOLLECTOR: "false"
       ND_TRANSCODINGCACHESIZE: 1GB
@@ -54,9 +54,13 @@ services:
       ND_DOMAIN: ${ND_DOMAIN}
       HTTPS_PORT: ${HTTPS_PORT}
       ACME_EMAIL: ${ACME_EMAIL}
+      SLSKD_HTTPS_PORT: ${SLSKD_HTTPS_PORT}
+      EXPLO_HTTPS_PORT: ${EXPLO_HTTPS_PORT}
     ports:
       - "80:80"
       - "${HTTPS_PORT}:${HTTPS_PORT}"
+      - "${SLSKD_HTTPS_PORT}:${SLSKD_HTTPS_PORT}"
+      - "${EXPLO_HTTPS_PORT}:${EXPLO_HTTPS_PORT}"
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
@@ -89,7 +93,8 @@ services:
       SLSKD_UPLOAD_SPEED_LIMIT: ${SLSKD_UPLOAD_SPEED_LIMIT_KIB}
     volumes:
       - ./data/slskd:/app
-      - ${BUFFER_DIR}/slskd/downloads:/downloads
+      # Готовые загрузки сразу в библиотеку; недокачанное на локальном SSD
+      - ${MUSIC_DIR}/soulseek:/downloads:rslave
       - ${BUFFER_DIR}/slskd/incomplete:/incomplete
       - ${BUFFER_DIR}/shared:/shared:ro
     ports:
@@ -111,7 +116,7 @@ services:
       - ./explo/explo.env:/opt/explo/.env
       - ./data/explo:/opt/explo/config
       - ${MUSIC_DIR}/explo:/data:rslave
-      - ${BUFFER_DIR}/slskd/downloads:/slskd
+      - ${MUSIC_DIR}/soulseek:/slskd:rslave
     ports:
       - "127.0.0.1:7288:7288"
     depends_on:

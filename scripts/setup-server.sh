@@ -52,6 +52,8 @@ ufw allow OpenSSH
 ufw allow 80/tcp
 ufw allow "${HTTPS_PORT:-443}/tcp"
 ufw allow "${SLSK_LISTEN_PORT:-50300}/tcp"
+ufw allow "${SLSKD_HTTPS_PORT:-5031}/tcp"
+ufw allow "${EXPLO_HTTPS_PORT:-7289}/tcp"
 ufw --force enable
 
 cat <<EOF

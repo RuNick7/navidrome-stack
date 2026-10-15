@@ -6,3 +6,11 @@
 	encode zstd gzip
 	reverse_proxy navidrome:4533
 }
+
+{$ND_DOMAIN}:{$SLSKD_HTTPS_PORT} {
+	reverse_proxy slskd:5030
+}
+
+{$ND_DOMAIN}:{$EXPLO_HTTPS_PORT} {
+	reverse_proxy explo:7288
+}
