@@ -74,7 +74,7 @@ docker compose up -d
 ```
 
 - slskd: `https://<домен>:1111`, логин `SLSKD_WEB_*`. Скачанное сохраняется в `/mnt/music/soulseek` и появляется в Navidrome без команд (слежение за папкой, плюс скан раз в час).
-- Explo: `https://<домен>:2222`, логин `EXPLO_UI_*`, там же расписание (по умолчанию Weekly Exploration раз в неделю, 50 треков).
+- Explo: `https://<домен>:4444`, логин `EXPLO_UI_*`, там же расписание (по умолчанию Weekly Exploration раз в неделю, 50 треков).
 - Порты меняются в `.env` (`SLSKD_HTTPS_PORT`, `EXPLO_HTTPS_PORT`) и должны быть открыты в ufw.
 - Порядок источников: Soulseek (MP3 320/FLAC, не ниже 256 kbps), затем YouTube Music.
 
