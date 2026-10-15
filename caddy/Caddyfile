@@ -14,3 +14,7 @@
 {$ND_DOMAIN}:{$EXPLO_HTTPS_PORT} {
 	reverse_proxy explo:7288
 }
+
+{$ND_DOMAIN}:{$AUDIOMUSE_HTTPS_PORT} {
+	reverse_proxy audiomuse-flask:8000
+}

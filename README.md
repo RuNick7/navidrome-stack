@@ -73,8 +73,8 @@ cp explo/explo.env.example explo/explo.env && nano explo/explo.env   # ListenBra
 docker compose up -d
 ```
 
-- slskd: `https://<домен>:5031`, логин `SLSKD_WEB_*`. Скачанное сохраняется в `/mnt/music/soulseek` и появляется в Navidrome без команд (слежение за папкой, плюс скан раз в час).
-- Explo: `https://<домен>:7289`, логин `EXPLO_UI_*`, там же расписание (по умолчанию Weekly Exploration раз в неделю, 50 треков).
+- slskd: `https://<домен>:1111`, логин `SLSKD_WEB_*`. Скачанное сохраняется в `/mnt/music/soulseek` и появляется в Navidrome без команд (слежение за папкой, плюс скан раз в час).
+- Explo: `https://<домен>:2222`, логин `EXPLO_UI_*`, там же расписание (по умолчанию Weekly Exploration раз в неделю, 50 треков).
 - Порты меняются в `.env` (`SLSKD_HTTPS_PORT`, `EXPLO_HTTPS_PORT`) и должны быть открыты в ufw.
 - Порядок источников: Soulseek (MP3 320/FLAC, не ниже 256 kbps), затем YouTube Music.
 
@@ -85,12 +85,13 @@ docker compose up -d
 ```bash
 # в .env: AUDIOMUSE_DB_PASSWORD; COMPOSE_PROFILES=discovery,ai
 docker compose up -d
-ssh -L 8000:127.0.0.1:8000 <сервер>   # затем http://127.0.0.1:8000
+ssh -L 8000:127.0.0.1:8000 <сервер>   # первый вход: http://127.0.0.1:8000
 ```
 
 1. Setup Wizard: сервер Navidrome, URL `http://navidrome:4533`, логин и пароль Navidrome; задать логин, пароль и **API token** AudioMuse.
-2. Запустить анализ библиотеки ночью. Распознавание текстов (Whisper) отключено ради памяти.
-3. В Navidrome *Настройки → Plugins → AudioMuse-AI*: URL `http://audiomuse-flask:8000`, тот же API token.
+2. После мастера (включена аутентификация) интерфейс доступен по `https://<домен>:3333`.
+3. Запустить анализ библиотеки ночью. Распознавание текстов (Whisper) отключено ради памяти.
+4. В Navidrome *Настройки → Plugins → AudioMuse-AI*: URL `http://audiomuse-flask:8000`, тот же API token.
 
 Готово, когда Instant Mix в Navidrome подбирает по звучанию, а в AudioMuse-AI работает Sonic Fingerprint.
 

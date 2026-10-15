@@ -56,11 +56,13 @@ services:
       ACME_EMAIL: ${ACME_EMAIL}
       SLSKD_HTTPS_PORT: ${SLSKD_HTTPS_PORT}
       EXPLO_HTTPS_PORT: ${EXPLO_HTTPS_PORT}
+      AUDIOMUSE_HTTPS_PORT: ${AUDIOMUSE_HTTPS_PORT}
     ports:
       - "80:80"
       - "${HTTPS_PORT}:${HTTPS_PORT}"
       - "${SLSKD_HTTPS_PORT}:${SLSKD_HTTPS_PORT}"
       - "${EXPLO_HTTPS_PORT}:${EXPLO_HTTPS_PORT}"
+      - "${AUDIOMUSE_HTTPS_PORT}:${AUDIOMUSE_HTTPS_PORT}"
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
