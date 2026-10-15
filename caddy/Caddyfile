@@ -18,3 +18,8 @@
 {$ND_DOMAIN}:{$AUDIOMUSE_HTTPS_PORT} {
 	reverse_proxy audiomuse-flask:8000
 }
+
+{$ND_DOMAIN}:{$FEISHIN_HTTPS_PORT} {
+	encode zstd gzip
+	reverse_proxy feishin:9180
+}

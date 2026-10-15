@@ -15,6 +15,7 @@ ListenBrainz ──> Explo ──> slskd / YouTube ──> /mnt/music/explo
 |---|---|---|
 | [Navidrome](https://github.com/navidrome/navidrome) | 0.64.2 | сервер, Subsonic API, умные плейлисты |
 | [Caddy](https://caddyserver.com) | 2.10 | HTTPS с автосертификатом |
+| [Feishin](https://github.com/jeffvli/feishin) | 1.17.0 | веб-плеер в стиле Spotify, `https://<домен>:44444` |
 | [rclone](https://rclone.org) | последняя | Google Диск как диск, шифрование |
 | [slskd](https://github.com/slskd/slskd) | 0.26.1 | Soulseek: MP3 320 / FLAC |
 | [Explo](https://github.com/LumePart/Explo) | v1.2.0 | Weekly Exploration из ListenBrainz с докачкой |
@@ -61,7 +62,7 @@ docker compose up -d
 2. В Navidrome: *Настройки → Personal*: подключить Last.fm и ListenBrainz (токен с <https://listenbrainz.org/settings/>).
 3. Если есть история на Last.fm, импортируйте её в ListenBrainz (*Settings → Import*), чтобы рекомендации заработали сразу.
 4. *Настройки → Plugins*: включить `nd-lyrics`.
-5. Клиенты: Symfonium (Android), play:Sub (iOS), Feishin (Mac/ПК). В клиенте включить перекодирование вне Wi‑Fi (AAC/Opus 128–256 kbps).
+5. Клиенты: Symfonium или Tempus (Android), play:Sub или Amperfy (iOS), Feishin (Mac/Windows и веб-версия на `https://<домен>:44444`). В клиенте включить перекодирование вне Wi‑Fi (AAC/Opus 128–256 kbps).
 
 Готово, когда прослушивания видны в Last.fm и ListenBrainz, а в плеере есть синхронный текст.
 

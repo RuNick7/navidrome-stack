@@ -47,6 +47,18 @@ services:
     ports:
       - "127.0.0.1:4533:4533"
 
+  # Веб-плеер в стиле Spotify поверх Navidrome
+  feishin:
+    <<: *common
+    image: ghcr.io/jeffvli/feishin:${FEISHIN_VERSION}
+    environment:
+      SERVER_NAME: Navidrome
+      SERVER_LOCK: "true"
+      SERVER_TYPE: navidrome
+      SERVER_URL: https://${ND_DOMAIN}:${HTTPS_PORT}
+      ANALYTICS_DISABLED: "true"
+      FS_GENERAL_LANGUAGE: ru
+
   caddy:
     <<: *common
     image: caddy:${CADDY_VERSION}
@@ -57,18 +69,21 @@ services:
       SLSKD_HTTPS_PORT: ${SLSKD_HTTPS_PORT}
       EXPLO_HTTPS_PORT: ${EXPLO_HTTPS_PORT}
       AUDIOMUSE_HTTPS_PORT: ${AUDIOMUSE_HTTPS_PORT}
+      FEISHIN_HTTPS_PORT: ${FEISHIN_HTTPS_PORT}
     ports:
       - "80:80"
       - "${HTTPS_PORT}:${HTTPS_PORT}"
       - "${SLSKD_HTTPS_PORT}:${SLSKD_HTTPS_PORT}"
       - "${EXPLO_HTTPS_PORT}:${EXPLO_HTTPS_PORT}"
       - "${AUDIOMUSE_HTTPS_PORT}:${AUDIOMUSE_HTTPS_PORT}"
+      - "${FEISHIN_HTTPS_PORT}:${FEISHIN_HTTPS_PORT}"
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
       - navidrome
+      - feishin
 
   # --- profile: discovery -------------------------------------------------
 

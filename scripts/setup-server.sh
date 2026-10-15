@@ -55,6 +55,7 @@ ufw allow "${SLSK_LISTEN_PORT:-50300}/tcp"
 ufw allow "${SLSKD_HTTPS_PORT:-11111}/tcp"
 ufw allow "${EXPLO_HTTPS_PORT:-22222}/tcp"
 ufw allow "${AUDIOMUSE_HTTPS_PORT:-33333}/tcp"
+ufw allow "${FEISHIN_HTTPS_PORT:-44444}/tcp"
 ufw --force enable
 
 cat <<EOF
