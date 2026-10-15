@@ -23,8 +23,10 @@ if ! command -v rclone >/dev/null; then
 fi
 
 # Пользователь, от имени которого работает rclone и контейнеры (PUID/PGID в .env)
-id music >/dev/null 2>&1 || useradd -m -u 1000 -s /bin/bash music
+id music >/dev/null 2>&1 || useradd -m -s /bin/bash music
 usermod -aG docker music
+MUSIC_UID="$(id -u music)"
+MUSIC_GID="$(id -g music)"
 
 grep -q '^user_allow_other' /etc/fuse.conf || echo user_allow_other >> /etc/fuse.conf
 
@@ -42,7 +44,8 @@ fi
 sysctl -w vm.swappiness=10
 echo 'vm.swappiness=10' > /etc/sysctl.d/99-swappiness.conf
 
-install -m 644 "$REPO_DIR/rclone/rclone-music.service" /etc/systemd/system/
+sed -e "s/__UID__/$MUSIC_UID/; s/__GID__/$MUSIC_GID/" \
+  "$REPO_DIR/rclone/rclone-music.service" > /etc/systemd/system/rclone-music.service
 systemctl daemon-reload
 
 ufw allow OpenSSH
@@ -51,7 +54,9 @@ ufw allow "${HTTPS_PORT:-443}/tcp"
 ufw allow "${SLSK_LISTEN_PORT:-50300}/tcp"
 ufw --force enable
 
-cat <<'EOF'
+cat <<EOF
+
+Пользователь music: UID=$MUSIC_UID GID=$MUSIC_GID (впишите в .env как PUID/PGID)
 
 Готово. Дальше:
   1. sudo -u music rclone config        # remote "gdrive" (drive) и "gcrypt" (crypt поверх gdrive:)

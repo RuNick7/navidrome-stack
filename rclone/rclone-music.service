@@ -16,7 +16,7 @@ Environment=RCLONE_CONFIG=/home/music/.config/rclone/rclone.conf
 ExecStartPre=/bin/mkdir -p /srv/rclone-cache
 ExecStart=/usr/bin/rclone mount gcrypt:music /mnt/music \
   --allow-other \
-  --uid 1000 --gid 1000 --umask 002 \
+  --uid __UID__ --gid __GID__ --umask 002 \
   --dir-cache-time 1000h \
   --poll-interval 1m \
   --vfs-cache-mode full \
