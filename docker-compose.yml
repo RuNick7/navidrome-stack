@@ -21,7 +21,7 @@ services:
     user: "${PUID}:${PGID}"
     environment:
       TZ: ${TZ}
-      ND_MUSICFOLDER: /music
+      ND_MUSICFOLDER: ${MUSIC_DIR}
       ND_DATAFOLDER: /data
       ND_PLAYLISTSPATH: _playlists
       ND_SCANNER_SCHEDULE: "@every 1h"
@@ -42,8 +42,9 @@ services:
       ND_LISTENBRAINZ_ENABLED: "true"
     volumes:
       - ./data/navidrome:/data
-      - ${MUSIC_DIR}:/music:ro,rslave
-      - ./navidrome/playlists:/music/_playlists:ro
+      # Монтируем родительскую папку, а не саму точку rclone: тогда после
+      # перемонтирования Диска контейнеры видят новое подключение, а не мёртвое.
+      - ${MUSIC_PARENT}:${MUSIC_PARENT}:ro,rslave
     ports:
       - "127.0.0.1:4533:4533"
 
@@ -101,7 +102,7 @@ services:
       SLSKD_USERNAME: ${SLSKD_WEB_USERNAME}
       SLSKD_PASSWORD: ${SLSKD_WEB_PASSWORD}
       SLSKD_API_KEY: ${SLSKD_API_KEY}
-      SLSKD_DOWNLOADS_DIR: /music/soulseek
+      SLSKD_DOWNLOADS_DIR: ${MUSIC_DIR}/soulseek
       SLSKD_INCOMPLETE_DIR: /incomplete
       # Раздаём только локальную папку: сканирование Google Диска скачало бы всю библиотеку
       SLSKD_SHARED_DIR: /shared
@@ -110,9 +111,8 @@ services:
       SLSKD_UPLOAD_SPEED_LIMIT: ${SLSKD_UPLOAD_SPEED_LIMIT_KIB}
     volumes:
       - ./data/slskd:/app
-      # Готовые загрузки сразу в библиотеку; недокачанное на локальном SSD.
-      # Монтируем весь MUSIC_DIR: подпапка перестаёт работать после перезапуска rclone.
-      - ${MUSIC_DIR}:/music:rslave
+      # Готовые загрузки сразу в библиотеку; недокачанное на локальном SSD
+      - ${MUSIC_PARENT}:${MUSIC_PARENT}:rslave
       - ${BUFFER_DIR}/slskd/incomplete:/incomplete
       - ${BUFFER_DIR}/shared:/shared:ro
     ports:
@@ -131,12 +131,12 @@ services:
       UI_USERNAME: ${EXPLO_UI_USERNAME}
       UI_PASSWORD: ${EXPLO_UI_PASSWORD}
       # Важнее значений из explo.env
-      DOWNLOAD_DIR: /music/explo/
-      SLSKD_DIR: /music/soulseek/
+      DOWNLOAD_DIR: ${MUSIC_DIR}/explo/
+      SLSKD_DIR: ${MUSIC_DIR}/soulseek/
     volumes:
       - ./explo/explo.env:/opt/explo/.env
       - ./data/explo:/opt/explo/config
-      - ${MUSIC_DIR}:/music:rslave
+      - ${MUSIC_PARENT}:${MUSIC_PARENT}:rslave
     ports:
       - "127.0.0.1:7288:7288"
     depends_on:

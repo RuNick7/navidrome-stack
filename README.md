@@ -98,7 +98,7 @@ ssh -L 8000:127.0.0.1:8000 <сервер>   # первый вход: http://127.
 
 ## Фаза 5. Умные плейлисты
 
-Файлы `.nsp` из [`navidrome/playlists/`](navidrome/playlists) подключаются автоматически и обновляются при открытии:
+Файлы `.nsp` из [`navidrome/playlists/`](navidrome/playlists) `install-plugins.sh` копирует в `/mnt/music/_playlists`; плейлисты обновляются при открытии:
 
 | Файл | Плейлист |
 |---|---|

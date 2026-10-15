@@ -15,4 +15,12 @@ curl -fL -o "$dir/nd-lyrics.ndp" \
   "https://github.com/J0R6IT0/navidrome-lyrics-plugin/releases/download/${LYRICS_PLUGIN_VERSION}/nd-lyrics.ndp"
 
 chown -R "${PUID}:${PGID}" data 2>/dev/null || true
+
+# Умные плейлисты кладём прямо на Диск: Navidrome ищет их в MUSIC_DIR/_playlists
+if mountpoint -q "$MUSIC_DIR"; then
+  mkdir -p "$MUSIC_DIR/_playlists"
+  cp navidrome/playlists/*.nsp "$MUSIC_DIR/_playlists/"
+else
+  echo "$MUSIC_DIR не смонтирован: плейлисты не скопированы, запустите скрипт после rclone" >&2
+fi
 ls -l "$dir"
