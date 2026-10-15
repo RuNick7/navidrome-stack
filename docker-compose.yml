@@ -86,7 +86,7 @@ services:
       SLSKD_USERNAME: ${SLSKD_WEB_USERNAME}
       SLSKD_PASSWORD: ${SLSKD_WEB_PASSWORD}
       SLSKD_API_KEY: ${SLSKD_API_KEY}
-      SLSKD_DOWNLOADS_DIR: /downloads
+      SLSKD_DOWNLOADS_DIR: /music/soulseek
       SLSKD_INCOMPLETE_DIR: /incomplete
       # Раздаём только локальную папку: сканирование Google Диска скачало бы всю библиотеку
       SLSKD_SHARED_DIR: /shared
@@ -95,8 +95,9 @@ services:
       SLSKD_UPLOAD_SPEED_LIMIT: ${SLSKD_UPLOAD_SPEED_LIMIT_KIB}
     volumes:
       - ./data/slskd:/app
-      # Готовые загрузки сразу в библиотеку; недокачанное на локальном SSD
-      - ${MUSIC_DIR}/soulseek:/downloads:rslave
+      # Готовые загрузки сразу в библиотеку; недокачанное на локальном SSD.
+      # Монтируем весь MUSIC_DIR: подпапка перестаёт работать после перезапуска rclone.
+      - ${MUSIC_DIR}:/music:rslave
       - ${BUFFER_DIR}/slskd/incomplete:/incomplete
       - ${BUFFER_DIR}/shared:/shared:ro
     ports:
@@ -114,11 +115,13 @@ services:
       WEB_UI: "true"
       UI_USERNAME: ${EXPLO_UI_USERNAME}
       UI_PASSWORD: ${EXPLO_UI_PASSWORD}
+      # Важнее значений из explo.env
+      DOWNLOAD_DIR: /music/explo/
+      SLSKD_DIR: /music/soulseek/
     volumes:
       - ./explo/explo.env:/opt/explo/.env
       - ./data/explo:/opt/explo/config
-      - ${MUSIC_DIR}/explo:/data:rslave
-      - ${MUSIC_DIR}/soulseek:/slskd:rslave
+      - ${MUSIC_DIR}:/music:rslave
     ports:
       - "127.0.0.1:7288:7288"
     depends_on:
