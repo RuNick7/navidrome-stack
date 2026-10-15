@@ -52,9 +52,9 @@ ufw allow OpenSSH
 ufw allow 80/tcp
 ufw allow "${HTTPS_PORT:-443}/tcp"
 ufw allow "${SLSK_LISTEN_PORT:-50300}/tcp"
-ufw allow "${SLSKD_HTTPS_PORT:-1111}/tcp"
-ufw allow "${EXPLO_HTTPS_PORT:-4444}/tcp"
-ufw allow "${AUDIOMUSE_HTTPS_PORT:-3333}/tcp"
+ufw allow "${SLSKD_HTTPS_PORT:-11111}/tcp"
+ufw allow "${EXPLO_HTTPS_PORT:-22222}/tcp"
+ufw allow "${AUDIOMUSE_HTTPS_PORT:-33333}/tcp"
 ufw --force enable
 
 cat <<EOF
