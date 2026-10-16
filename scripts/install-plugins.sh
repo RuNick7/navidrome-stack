@@ -7,7 +7,8 @@ cd "$(dirname "$0")/.."
 set -a; . ./.env; set +a
 
 dir=data/navidrome/plugins
-mkdir -p "$dir" data/slskd data/explo
+mkdir -p "$dir" data/slskd data/explo data/lidarr data/soularr
+[ -f data/soularr/config.ini ] || cp soularr/config.ini.example data/soularr/config.ini
 
 curl -fL -o "$dir/audiomuseai.ndp" \
   "https://github.com/NeptuneHub/AudioMuse-AI-NV-plugin/releases/download/${AUDIOMUSE_PLUGIN_VERSION}/audiomuseai.ndp"
@@ -18,7 +19,7 @@ chown -R "${PUID}:${PGID}" data 2>/dev/null || true
 
 # Умные плейлисты кладём прямо на Диск: Navidrome ищет их в MUSIC_DIR/_playlists
 if mountpoint -q "$MUSIC_DIR"; then
-  mkdir -p "$MUSIC_DIR/_playlists"
+  mkdir -p "$MUSIC_DIR/_playlists" "$MUSIC_DIR/lidarr"
   cp navidrome/playlists/*.nsp "$MUSIC_DIR/_playlists/"
 else
   echo "$MUSIC_DIR не смонтирован: плейлисты не скопированы, запустите скрипт после rclone" >&2

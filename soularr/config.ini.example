@@ -1,0 +1,60 @@
+# Копируется в data/soularr/config.ini скриптом install-plugins.sh.
+# Заполните два api_key. Пути совпадают с MUSIC_DIR=/mnt/music из .env.
+# Полный список опций: https://github.com/mrusse/soularr/blob/main/config.ini
+
+[Lidarr]
+# Lidarr → Settings → General → API Key
+api_key =
+host_url = http://lidarr:8686
+download_dir = /mnt/music/soulseek
+disable_sync = False
+
+[Slskd]
+# SLSKD_API_KEY из .env
+api_key =
+host_url = http://slskd:5030
+url_base = /
+download_dir = /mnt/music/soulseek
+delete_searches = True
+stalled_timeout = 3600
+remote_queue_timeout = 300
+
+[Release Settings]
+use_selected_lidarr_release = False
+use_most_common_tracknum = True
+allow_multi_disc = True
+accepted_countries = Europe,Japan,United Kingdom,United States,[Worldwide],Australia,Canada,Russia
+skip_region_check = False
+accepted_formats = CD,Digital Media,Vinyl
+
+[Search Settings]
+search_timeout = 5000
+maximum_peer_queue = 50
+minimum_peer_upload_speed = 0
+minimum_filename_match_ratio = 0.8
+minimum_search_interval = 5
+# Сначала MP3 320, затем FLAC
+allowed_filetypes = mp3 320,flac 16/44.1,flac,mp3
+ignored_users =
+album_prepend_artist = False
+search_type = incrementing_page
+number_of_albums_to_grab = 10
+title_blacklist = live,karaoke,instrumental
+search_blacklist =
+search_source = missing
+failed_import_denylist = True
+
+[Download Settings]
+download_filtering = True
+use_extension_whitelist = False
+extensions_whitelist = lrc,nfo,txt
+rename_download_folders = True
+
+[Logging]
+level = INFO
+format = [%(levelname)s|%(module)s|L%(lineno)d] %(asctime)s: %(message)s
+datefmt = %Y-%m-%dT%H:%M:%S%z
+log_to_file = True
+log_file = soularr.log
+max_bytes = 1048576
+backup_count = 3

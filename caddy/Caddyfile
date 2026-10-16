@@ -23,3 +23,7 @@
 	encode zstd gzip
 	reverse_proxy feishin:9180
 }
+
+{$ND_DOMAIN}:{$LIDARR_HTTPS_PORT} {
+	reverse_proxy lidarr:8686
+}

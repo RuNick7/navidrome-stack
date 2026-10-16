@@ -19,6 +19,7 @@ ListenBrainz ──> Explo ──> slskd / YouTube ──> /mnt/music/explo
 | [rclone](https://rclone.org) | последняя | Google Диск как диск, шифрование |
 | [slskd](https://github.com/slskd/slskd) | 0.26.1 | Soulseek: MP3 320 / FLAC |
 | [Explo](https://github.com/LumePart/Explo) | v1.2.0 | Weekly Exploration из ListenBrainz с докачкой |
+| [Lidarr](https://lidarr.audio) + [Soularr](https://github.com/mrusse/soularr) | 3.1.0 / 1.2.2 | дискографии исполнителей через Soulseek, `https://<домен>:55555` |
 | [AudioMuse-AI](https://github.com/NeptuneHub/AudioMuse-AI) | 3.6.3 + плагин v10 | похожее по звучанию, Instant Mix, Sonic Fingerprint |
 | [navidrome-lyrics-plugin](https://github.com/J0R6IT0/navidrome-lyrics-plugin) | v8.1.0 | синхронные тексты (LRCLIB и др.) |
 
@@ -80,6 +81,16 @@ docker compose up -d
 - Порядок источников: Soulseek (MP3 320/FLAC, не ниже 256 kbps), затем YouTube Music.
 
 Готово, когда в Navidrome появился плейлист Weekly Exploration со скачанными треками и обложками.
+
+### Дискографии исполнителей (Lidarr + Soularr)
+
+Lidarr хранит список исполнителей и знает их альбомы, Soularr раз в 5 минут ищет недостающие альбомы через slskd, Lidarr переносит скачанное в `/mnt/music/lidarr`.
+
+1. `./scripts/install-plugins.sh` (создаст `data/soularr/config.ini` и `/mnt/music/lidarr`), `docker compose up -d`.
+2. `https://<домен>:55555`: задать логин и пароль Lidarr.
+3. *Settings → Media Management → Root Folders*: добавить `/mnt/music/lidarr`.
+4. *Settings → General → API Key* скопировать в `data/soularr/config.ini` (`[Lidarr] api_key`), туда же `SLSKD_API_KEY` из `.env` (`[Slskd] api_key`), затем `docker compose restart soularr`.
+5. *Artist → Add New*: найти исполнителя, Monitor: All Albums, нажать *Add*. Через несколько минут Soularr начнёт качать (`docker compose logs -f soularr`).
 
 ## Фаза 4. Моя волна (AudioMuse-AI)
 

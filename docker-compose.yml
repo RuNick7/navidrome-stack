@@ -71,6 +71,7 @@ services:
       EXPLO_HTTPS_PORT: ${EXPLO_HTTPS_PORT}
       AUDIOMUSE_HTTPS_PORT: ${AUDIOMUSE_HTTPS_PORT}
       FEISHIN_HTTPS_PORT: ${FEISHIN_HTTPS_PORT}
+      LIDARR_HTTPS_PORT: ${LIDARR_HTTPS_PORT}
     ports:
       - "80:80"
       - "${HTTPS_PORT}:${HTTPS_PORT}"
@@ -78,6 +79,7 @@ services:
       - "${EXPLO_HTTPS_PORT}:${EXPLO_HTTPS_PORT}"
       - "${AUDIOMUSE_HTTPS_PORT}:${AUDIOMUSE_HTTPS_PORT}"
       - "${FEISHIN_HTTPS_PORT}:${FEISHIN_HTTPS_PORT}"
+      - "${LIDARR_HTTPS_PORT}:${LIDARR_HTTPS_PORT}"
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
@@ -141,6 +143,37 @@ services:
       - "127.0.0.1:7288:7288"
     depends_on:
       - navidrome
+      - slskd
+
+  # Дискография исполнителей: Lidarr ведёт список, Soularr качает недостающее через slskd
+  lidarr:
+    <<: *common
+    profiles: [discovery]
+    image: lscr.io/linuxserver/lidarr:${LIDARR_VERSION}
+    environment:
+      TZ: ${TZ}
+      PUID: ${PUID}
+      PGID: ${PGID}
+    volumes:
+      - ./data/lidarr:/config
+      - ${MUSIC_PARENT}:${MUSIC_PARENT}:rslave
+    ports:
+      - "127.0.0.1:8686:8686"
+
+  soularr:
+    <<: *common
+    profiles: [discovery]
+    image: ghcr.io/mrusse/soularr:${SOULARR_VERSION}
+    user: "${PUID}:${PGID}"
+    environment:
+      TZ: ${TZ}
+      SCRIPT_INTERVAL: "300"
+      WEBUI_ENABLED: "false"
+    volumes:
+      - ./data/soularr:/data
+      - ${MUSIC_PARENT}:${MUSIC_PARENT}:rslave
+    depends_on:
+      - lidarr
       - slskd
 
   # --- profile: ai ---------------------------------------------------------
