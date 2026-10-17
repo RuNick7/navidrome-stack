@@ -17,6 +17,8 @@ import os
 import re
 import secrets
 import sys
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -39,9 +41,16 @@ def http(method, url, headers=None, body=None):
     req = urllib.request.Request(url, data=data, method=method, headers=headers or {})
     if data is not None:
         req.add_header("Content-Type", "application/json")
-    with urllib.request.urlopen(req, timeout=60) as r:
-        raw = r.read()
-    return json.loads(raw) if raw else None
+    for attempt in range(6):
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                raw = r.read()
+            return json.loads(raw) if raw else None
+        except urllib.error.HTTPError as e:
+            # метадата-сервер Lidarr отвечает 503/429 при частых запросах
+            if e.code not in (429, 500, 502, 503, 504) or attempt == 5:
+                raise
+            time.sleep(5 * 2 ** attempt)
 
 
 def norm(s):
@@ -89,6 +98,45 @@ class Lidarr:
         return http(method, f"{self.url}/api/v1/{path}", self.h, body)
 
 
+def process(lid, args, artist, albums, existing, root, quality, metadata, stats):
+    known = existing.get(norm(artist))
+    if not known:
+        time.sleep(1)  # не перегружать метадата-сервер Lidarr
+        found = lid.get("artist/lookup", term=artist)
+        match = next((x for x in found if norm(x["artistName"]) == norm(artist)), None)
+        if not match:
+            print(f"  исполнитель не найден в MusicBrainz: {artist}")
+            stats["notfound"] += len(albums)
+            return
+        print(f"  + исполнитель {match['artistName']}")
+        if args.apply:
+            lid.send("POST", "artist", {
+                **match,
+                "qualityProfileId": quality,
+                "metadataProfileId": metadata,
+                "rootFolderPath": root[0]["path"],
+                "monitored": True,
+                "monitorNewItems": "none",
+                "addOptions": {"monitor": "none", "searchForMissingAlbums": False},
+            })
+        stats["pending"] += len(albums)
+        return
+
+    catalogue = {norm(x["title"]): x for x in lid.get("album", artistId=known["id"])}
+    for title in sorted(albums):
+        alb = catalogue.get(norm(title))
+        if not alb:
+            print(f"  нет в каталоге Lidarr: {artist} — {title} (сингл или другое издание)")
+            stats["notfound"] += 1
+        elif alb["monitored"]:
+            stats["already"] += 1
+        else:
+            print(f"  → {artist} — {alb['title']}")
+            if args.apply:
+                lid.send("PUT", "album/monitor", {"albumIds": [alb["id"]], "monitored": True})
+            stats["queued"] += 1
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true", help="отправить в Lidarr (без флага только показать)")
@@ -123,42 +171,13 @@ def main():
 
     stats = {"queued": 0, "already": 0, "pending": 0, "notfound": 0}
     for artist, albums in sorted(wanted.items()):
-        known = existing.get(norm(artist))
-        if not known:
-            found = lid.get("artist/lookup", term=artist)
-            match = next((x for x in found if norm(x["artistName"]) == norm(artist)), None)
-            if not match:
-                print(f"  исполнитель не найден в MusicBrainz: {artist}")
-                stats["notfound"] += len(albums)
-                continue
-            print(f"  + исполнитель {match['artistName']}")
-            if args.apply:
-                lid.send("POST", "artist", {
-                    **match,
-                    "qualityProfileId": quality,
-                    "metadataProfileId": metadata,
-                    "rootFolderPath": root[0]["path"],
-                    "monitored": True,
-                    "monitorNewItems": "none",
-                    "addOptions": {"monitor": "none", "searchForMissingAlbums": False},
-                })
-            stats["pending"] += len(albums)
-            continue
+        try:
+            process(lid, args, artist, albums, existing, root, quality, metadata, stats)
+        except urllib.error.HTTPError as e:
+            print(f"  ошибка Lidarr ({e.code}) на {artist}, пропускаю")
+            stats["notfound"] += len(albums)
 
-        catalogue = {norm(x["title"]): x for x in lid.get("album", artistId=known["id"])}
-        for title in sorted(albums):
-            alb = catalogue.get(norm(title))
-            if not alb:
-                print(f"  нет в каталоге Lidarr: {artist} — {title} (сингл или другое издание)")
-                stats["notfound"] += 1
-            elif alb["monitored"]:
-                stats["already"] += 1
-            else:
-                print(f"  → {artist} — {alb['title']}")
-                if args.apply:
-                    lid.send("PUT", "album/monitor", {"albumIds": [alb["id"]], "monitored": True})
-                stats["queued"] += 1
-
+    print
     print(f"\nПоставлено на докачку: {stats['queued']}, уже в очереди: {stats['already']}, "
           f"ждут обновления Lidarr: {stats['pending']}, не найдено: {stats['notfound']}")
     if not args.apply:
