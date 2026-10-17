@@ -14,8 +14,37 @@ duration() {
   ffprobe -v error -show_entries format=duration -of csv=p=0 "$1" 2>/dev/null | cut -d. -f1
 }
 
+# Обложка внутрь Opus: тег METADATA_BLOCK_PICTURE (блок PICTURE из FLAC в base64).
+# Пустая строка, если обложки нет.
+u32() { local o=""; for s in 24 16 8 0; do o+="\\$(printf %03o $(($1 >> s & 255)))"; done; printf "$o"; }
+picture_tag() {
+  local img="$TMP/cover.jpg" size
+  rm -f "$img"
+  ffmpeg -v quiet -nostdin -i "$1" -an -frames:v 1 -vf "scale='min(600,iw)':-2" -q:v 4 -c:v mjpeg -y "$img" || return
+  [ -s "$img" ] || return
+  size=$(stat -c %s "$img")
+  [ "$size" -lt 90000 ] || return  # иначе аргумент ffmpeg превысит лимит ядра
+  { u32 3; u32 10; printf image/jpeg; u32 0; u32 0; u32 0; u32 0; u32 0; u32 "$size"; cat "$img"; } | base64 -w0
+}
+
+# Удаляет cover.jpg из папок, где лежат треки разных альбомов: такая обложка
+# ставилась на все альбомы папки (плейлисты Explo, разовые загрузки slskd).
+fix_covers() {
+  find "$ROOT" -path "$ROOT/_playlists" -prune -o -type f -name cover.jpg -print0 |
+    while IFS= read -r -d '' c; do
+      local dir n
+      dir="$(dirname "$c")"
+      n=$(find "$dir" -maxdepth 1 -type f \( -iname '*.opus' -o -iname '*.flac' -o -iname '*.mp3' -o -iname '*.m4a' -o -iname '*.ogg' \) -print0 |
+        xargs -0 -r -n1 ffprobe -v error -show_entries format_tags=album:stream_tags=album -of csv=p=0 2>/dev/null |
+        sed '/^$/d' | sort -u | wc -l)
+      if [ "$n" -gt 1 ]; then
+        rm -f "$c" && echo "удалена общая обложка ($n альбомов): $c"
+      fi
+    done
+}
+
 convert() {
-  local src="$1" dir base dst tmp a b
+  local src="$1" dir base dst tmp a b pic
   dir="$(dirname "$src")"
   base="$(basename "${src%.*}")"
   dst="$dir/$base.opus"
@@ -26,15 +55,9 @@ convert() {
     return
   fi
 
-  # Opus в Ogg плохо хранит обложку, поэтому выносим её в cover.jpg папки альбома
-  if [ ! -e "$dir/cover.jpg" ]; then
-    rm -f "$TMP/cover.jpg"
-    if ffmpeg -v quiet -nostdin -i "$src" -an -frames:v 1 -c:v mjpeg "$TMP/cover.jpg" && [ -s "$TMP/cover.jpg" ]; then
-      cp "$TMP/cover.jpg" "$dir/cover.jpg"
-    fi
-  fi
-
+  pic="$(picture_tag "$src")"
   if ! nice -n 10 ffmpeg -v error -nostdin -i "$src" -map 0:a:0 -map_metadata 0 \
+      ${pic:+-metadata "METADATA_BLOCK_PICTURE=$pic"} \
       -c:a libopus -b:a "$BITRATE" -vbr on -y "$tmp"; then
     echo "ошибка: $src"
     rm -f "$tmp"
@@ -51,6 +74,11 @@ convert() {
 
   cp "$tmp" "$dst" && rm -f "$tmp" "$src" && echo "готово: $dst"
 }
+
+if [ "${FIX_COVERS:-false}" = "true" ]; then
+  fix_covers
+  exit 0
+fi
 
 while true; do
   find "$ROOT" -path "$ROOT/_playlists" -prune -o -type f \

@@ -29,6 +29,7 @@ services:
       ND_ENABLEINSIGHTSCOLLECTOR: "false"
       ND_TRANSCODINGCACHESIZE: 1GB
       ND_IMAGECACHESIZE: 500MB
+      ND_COVERARTPRIORITY: embedded, cover.*, folder.*, front.*, external
       # Плагины: AudioMuse-AI (похожее по звучанию) и тексты песен
       ND_PLUGINS_ENABLED: "true"
       ND_PLUGINS_AUTORELOAD: "true"
