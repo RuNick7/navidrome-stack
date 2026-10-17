@@ -96,6 +96,16 @@ Lidarr хранит список исполнителей и знает их а�
 4. *Settings → General → API Key* скопировать в `data/soularr/config.ini` (`[Lidarr] api_key`), туда же `SLSKD_API_KEY` из `.env` (`[Slskd] api_key`), затем `docker compose restart soularr`.
 5. *Artist → Add New*: найти исполнителя, Monitor: All Albums, нажать *Add*. Через несколько минут Soularr начнёт качать (`docker compose logs -f soularr`).
 
+**Докачать неполные альбомы.** Скрипт находит в Navidrome альбомы, от которых есть 1–2 трека, и отмечает их в Lidarr (исполнитель добавляется без всей дискографии):
+
+```bash
+# в .env: ND_USER, ND_PASSWORD (Navidrome), LIDARR_API_KEY
+python3 scripts/complete-albums.py            # пробный прогон
+python3 scripts/complete-albums.py --apply    # отправить; повторить через пару минут для новых исполнителей
+```
+
+Синглы и EP находятся, только если они включены в *Settings → Profiles → Metadata*.
+
 ## Фаза 4. Моя волна (AudioMuse-AI)
 
 ```bash
