@@ -176,6 +176,23 @@ services:
       - lidarr
       - slskd
 
+  # Перекодирует всю библиотеку в Opus и удаляет оригиналы (проход раз в 15 минут)
+  opus-converter:
+    <<: *common
+    profiles: [discovery]
+    build: ./converter
+    image: navidrome-stack/opus-converter
+    user: "${PUID}:${PGID}"
+    environment:
+      TZ: ${TZ}
+      MUSIC_DIR: ${MUSIC_DIR}
+      OPUS_BITRATE: ${OPUS_BITRATE}
+      MIN_AGE_MINUTES: "30"
+      INTERVAL_SECONDS: "900"
+    volumes:
+      - ${MUSIC_PARENT}:${MUSIC_PARENT}:rslave
+    cpus: 2
+
   # --- profile: ai ---------------------------------------------------------
 
   audiomuse-postgres:
