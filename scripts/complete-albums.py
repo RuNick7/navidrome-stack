@@ -100,13 +100,13 @@ class Lidarr:
 
 
 def process(lid, args, artist, albums, existing, root, quality, metadata, stats):
-    known = existing.get(norm(artist))
+    # "A, B, Cast of X" или "A feat. B": ищем целиком, потом по первому исполнителю
+    names = list(dict.fromkeys([artist, re.split(r",|&| feat\.? | ft\.? ", artist, flags=re.I)[0].strip()]))
+    known = next((existing[norm(n)] for n in names if norm(n) in existing), None)
     if not known:
         time.sleep(1)  # не перегружать метадата-сервер Lidarr
-        # "A, B, Cast of X" или "A feat. B": ищем целиком, потом по первому исполнителю
-        names = [artist, re.split(r",|&| feat\.? | ft\.? ", artist, flags=re.I)[0].strip()]
         match = None
-        for name in dict.fromkeys(names):
+        for name in names:
             found = lid.get("artist/lookup", term=name)
             match = next((x for x in found if norm(x["artistName"]) == norm(name)), None)
             if match:
