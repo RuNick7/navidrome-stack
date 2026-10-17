@@ -46,9 +46,10 @@ def http(method, url, headers=None, body=None):
             with urllib.request.urlopen(req, timeout=60) as r:
                 raw = r.read()
             return json.loads(raw) if raw else None
-        except urllib.error.HTTPError as e:
-            # метадата-сервер Lidarr отвечает 503/429 при частых запросах
-            if e.code not in (429, 500, 502, 503, 504) or attempt == 5:
+        except (urllib.error.URLError, TimeoutError) as e:
+            # метадата-сервер Lidarr отвечает 503/429 или не отвечает при частых запросах
+            code = getattr(e, "code", None)
+            if (code and code not in (429, 500, 502, 503, 504)) or attempt == 5:
                 raise
             time.sleep(5 * 2 ** attempt)
 
@@ -102,8 +103,14 @@ def process(lid, args, artist, albums, existing, root, quality, metadata, stats)
     known = existing.get(norm(artist))
     if not known:
         time.sleep(1)  # не перегружать метадата-сервер Lidarr
-        found = lid.get("artist/lookup", term=artist)
-        match = next((x for x in found if norm(x["artistName"]) == norm(artist)), None)
+        # "A, B, Cast of X" или "A feat. B": ищем целиком, потом по первому исполнителю
+        names = [artist, re.split(r",|&| feat\.? | ft\.? ", artist, flags=re.I)[0].strip()]
+        match = None
+        for name in dict.fromkeys(names):
+            found = lid.get("artist/lookup", term=name)
+            match = next((x for x in found if norm(x["artistName"]) == norm(name)), None)
+            if match:
+                break
         if not match:
             print(f"  исполнитель не найден в MusicBrainz: {artist}")
             stats["notfound"] += len(albums)
@@ -173,8 +180,8 @@ def main():
     for artist, albums in sorted(wanted.items()):
         try:
             process(lid, args, artist, albums, existing, root, quality, metadata, stats)
-        except urllib.error.HTTPError as e:
-            print(f"  ошибка Lidarr ({e.code}) на {artist}, пропускаю")
+        except (urllib.error.URLError, TimeoutError) as e:
+            print(f"  ошибка Lidarr ({e}) на {artist}, пропускаю")
             stats["notfound"] += len(albums)
 
     print
