@@ -9,6 +9,9 @@ MIN_AGE="${MIN_AGE_MINUTES:-30}"
 INTERVAL="${INTERVAL_SECONDS:-900}"
 TMP="${TMPDIR:-/tmp}/opus"
 mkdir -p "$TMP"
+# Файлы, которые не удалось перекодировать (битые): не трогаем повторно каждые 15 минут
+FAILED="$ROOT/.opus-failed"
+touch "$FAILED"
 
 duration() {
   ffprobe -v error -show_entries format=duration -of csv=p=0 "$1" 2>/dev/null | cut -d. -f1
@@ -67,6 +70,7 @@ convert() {
       ${pic:+-metadata "METADATA_BLOCK_PICTURE=$pic"} \
       -c:a libopus -b:a "$BITRATE" -vbr on -y "$tmp"; then
     echo "ошибка: $src"
+    echo "$src" >> "$FAILED"
     rm -f "$tmp"
     return
   fi
@@ -75,6 +79,7 @@ convert() {
   b="$(duration "$tmp")"
   if [ -z "$a" ] || [ -z "$b" ] || [ $((a - b)) -gt 2 ] || [ $((b - a)) -gt 2 ]; then
     echo "длительность не совпала ($a/$b с), оригинал оставлен: $src"
+    echo "$src" >> "$FAILED"
     rm -f "$tmp"
     return
   fi
@@ -92,7 +97,7 @@ while true; do
     \( -iname '*.flac' -o -iname '*.mp3' -o -iname '*.m4a' -o -iname '*.aac' \
        -o -iname '*.ogg' -o -iname '*.wav' -o -iname '*.alac' -o -iname '*.wma' \) \
     -mmin +"$MIN_AGE" -print0 |
-    while IFS= read -r -d '' f; do convert "$f"; done
+    while IFS= read -r -d '' f; do grep -qxF -- "$f" "$FAILED" || convert "$f"; done
   [ "${RUN_ONCE:-false}" = "true" ] && exit 0
   sleep "$INTERVAL"
 done

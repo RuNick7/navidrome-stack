@@ -109,11 +109,18 @@ if env.get("LIDARR_API_KEY"):
     events = {}
     for e in hist if isinstance(hist, list) else []:
         events[e["eventType"]] = events.get(e["eventType"], 0) + 1
-    print(f"  ждут скачивания альбомов: {missing.get('totalRecords', '?')}, в очереди: {queue.get('totalRecords', '?')}")
+    albums = get("http://127.0.0.1:8686/api/v1/album", h)
+    albums = albums if isinstance(albums, list) else []
+    mon = [a for a in albums if a.get("monitored")]
+    partial = [a for a in mon if 0 < a.get("statistics", {}).get("percentOfTracks", 0) < 100]
+    done = [a for a in mon if a.get("statistics", {}).get("percentOfTracks", 0) >= 100]
+    print(f"  отмечено альбомов: {len(mon)} (скачаны {len(done)}, частично {len(partial)}, "
+          f"без файлов {len(mon) - len(done) - len(partial)}); в Missing: {missing.get('totalRecords', '?')}, "
+          f"в очереди: {queue.get('totalRecords', '?')}")
     print(f"  за {HOURS} ч: импортировано альбомов {events.get('downloadImported', 0)}, "
           f"треков {events.get('trackFileImported', 0)}, не импортировано {events.get('albumImportIncomplete', 0)}")
     for e in (get("http://127.0.0.1:8686/api/v1/health", h) or []):
-        if isinstance(e, dict) and e.get("type") == "error":
+        if isinstance(e, dict) and e.get("type") == "error" and "indexers" not in e.get("message", ""):
             print(f"  ошибка: {e.get('message')}")
 else:
     print("  нет LIDARR_API_KEY в .env")
@@ -147,8 +154,11 @@ print(f"  перекодировано {sum('готово:' in l for l in cv)}, 
 section(f"Ошибки в логах за {HOURS} ч")
 services = [line.split("\t")[0] for line in filter(None, ps)]
 pattern = re.compile(r"\b(error|fatal|panic|exception|traceback)\b|level=error|\[ERR", re.I)
+# обычный шум: нет текста песни, обрыв соединения клиентом, повтор загрузки, битый файл в конвертере
+noise = re.compile(r"no lyrics found|error getting lyrics|incomplete response|Requeue file|"
+                   r"Error submitting packet|Header missing|Invalid data found|decoder lost sync", re.I)
 for service in services:
-    errs = [l for l in logs(service) if pattern.search(l)]
+    errs = [l for l in logs(service) if pattern.search(l) and not noise.search(l)]
     if errs:
         print(f"  {service}: {len(errs)}, последняя: {errs[-1].split('|', 1)[-1].strip()[:160]}")
 print("  (подробно: docker compose logs --since 24h <сервис> | grep -i error)")
