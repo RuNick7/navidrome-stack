@@ -1,0 +1,23 @@
+# Дополнительные настройки Navidrome, которые неудобно задавать переменными окружения.
+# Подключается в docker-compose.yml как /data/navidrome.toml. После изменения: docker compose up -d navidrome
+# и полный пересканирование (docker compose exec navidrome /app/navidrome scan --full).
+
+# Делить исполнителей в тегах ARTIST и ALBUMARTIST не только по feat., но и по запятой, & и x:
+# «Скриптонит, Andy Panda» станет двумя исполнителями.
+[Tags.artist]
+Split = [" / ", " feat. ", " feat ", " ft. ", " ft ", "; ", ", ", " & ", " x ", " × "]
+
+[Tags.albumartist]
+Split = [" / ", " feat. ", " feat ", " ft. ", " ft ", "; ", ", ", " & ", " x ", " × "]
+
+[Scanner]
+# Названия групп, которые делить нельзя. Добавляйте свои по мере нахождения.
+ArtistSplitExceptions = [
+  "Earth, Wind & Fire", "Simon & Garfunkel", "Crosby, Stills, Nash & Young", "Tyler, The Creator",
+  "Hall & Oates", "Mumford & Sons", "Nick Cave & The Bad Seeds", "Florence + The Machine",
+  "Marina & The Diamonds", "Sly & The Family Stone", "Kool & The Gang", "Iron & Wine",
+  "Echo & The Bunnymen", "Siouxsie and the Banshees", "Belle & Sebastian", "Peter, Bjorn and John",
+  "Brooks & Dunn", "Ike & Tina Turner", "Bob Marley & The Wailers", "Prince & The Revolution",
+  "Tom Petty & The Heartbreakers", "Huey Lewis & The News", "Hootie & The Blowfish",
+  "Чиж & Co",
+]

@@ -43,6 +43,7 @@ services:
       ND_LISTENBRAINZ_ENABLED: "true"
     volumes:
       - ./data/navidrome:/data
+      - ./navidrome/navidrome.toml:/data/navidrome.toml:ro
       # Монтируем родительскую папку, а не саму точку rclone: тогда после
       # перемонтирования Диска контейнеры видят новое подключение, а не мёртвое.
       - ${MUSIC_PARENT}:${MUSIC_PARENT}:ro,rslave

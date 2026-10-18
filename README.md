@@ -138,6 +138,10 @@ ssh -L 8000:127.0.0.1:8000 <сервер>   # первый вход: http://127.
 
 Готово, когда Instant Mix в Navidrome подбирает по звучанию, а в AudioMuse-AI работает Sonic Fingerprint.
 
+### Исполнители через запятую
+
+По умолчанию Navidrome делит исполнителей только по `feat.`, `/` и `;`, поэтому «Скриптонит, Andy Panda» становится одним исполнителем. В [`navidrome/navidrome.toml`](navidrome/navidrome.toml) добавлено деление по `, `, ` & `, ` x `; группы с запятой или & в названии перечислены в `ArtistSplitExceptions`. После изменения: `docker compose up -d navidrome && docker compose exec navidrome /app/navidrome scan --full`.
+
 ## Фаза 5. Умные плейлисты
 
 Файлы `.nsp` из [`navidrome/playlists/`](navidrome/playlists) `install-plugins.sh` копирует в `/mnt/music/_playlists`; плейлисты обновляются при открытии:
