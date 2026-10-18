@@ -123,7 +123,10 @@ def pick_folder(slskd, responses, titles):
             audio = [f for f in files if ext(f["filename"]) == fmt]
             names = [norm(f["filename"]) for f in audio]
             matched = sum(1 for t in wanted if any(t in n for n in names))
-            if matched >= 0.8 * len(wanted) and len(audio) <= len(wanted) + 2:
+            # почти весь альбом или другое издание (обычное вместо deluxe и наоборот)
+            whole = matched >= 0.8 * len(wanted) and len(audio) <= len(wanted) + 6
+            edition = matched >= 0.6 * len(wanted) and matched >= 0.9 * len(audio)
+            if audio and (whole or edition):
                 return user, folder, audio
     return None
 
@@ -179,8 +182,8 @@ def main():
         artist, title = a["artist"]["artistName"], a["title"]
         tracks = [t["title"] for t in lidarr("GET", "track", albumId=a["id"])]
         entry = {"title": f"{artist} — {title}", "tried": now, "status": "notfound"}
-        # два самых длинных названия: короткие («Go», «Intro») дают мусор
-        for track in sorted(set(tracks), key=len, reverse=True)[:2]:
+        # три самых длинных названия: короткие («Go», «Intro») дают мусор
+        for track in sorted(set(tracks), key=len, reverse=True)[:3]:
             try:
                 found = pick_folder(slskd, search(slskd, f"{artist} {track}"), tracks)
             except (urllib.error.URLError, TimeoutError) as e:
