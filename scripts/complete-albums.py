@@ -130,6 +130,7 @@ def process(lid, args, artist, albums, existing, root, quality, metadata, stats)
         return
 
     catalogue = {norm(x["title"]): x for x in lid.get("album", artistId=known["id"])}
+    wanted = False
     for title in sorted(albums):
         alb = catalogue.get(norm(title))
         if not alb:
@@ -137,13 +138,15 @@ def process(lid, args, artist, albums, existing, root, quality, metadata, stats)
             stats["notfound"] += 1
         elif alb["monitored"]:
             stats["already"] += 1
+            wanted = True
         else:
             print(f"  → {artist} — {alb['title']}")
             if args.apply:
                 lid.send("PUT", "album/monitor", {"albumIds": [alb["id"]], "monitored": True})
             stats["queued"] += 1
+            wanted = True
     # addOptions monitor=none оставляет исполнителя неотмеченным, и Lidarr не кладёт его альбомы в Missing
-    if args.apply and not known["monitored"] and any(a["monitored"] for a in catalogue.values()) | bool(stats["queued"]):
+    if args.apply and wanted and not known["monitored"]:
         lid.send("PUT", "artist/editor", {"artistIds": [known["id"]], "monitored": True})
         known["monitored"] = True
 
