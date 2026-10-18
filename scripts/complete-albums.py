@@ -142,6 +142,10 @@ def process(lid, args, artist, albums, existing, root, quality, metadata, stats)
             if args.apply:
                 lid.send("PUT", "album/monitor", {"albumIds": [alb["id"]], "monitored": True})
             stats["queued"] += 1
+    # addOptions monitor=none оставляет исполнителя неотмеченным, и Lidarr не кладёт его альбомы в Missing
+    if args.apply and not known["monitored"] and any(a["monitored"] for a in catalogue.values()) | bool(stats["queued"]):
+        lid.send("PUT", "artist/editor", {"artistIds": [known["id"]], "monitored": True})
+        known["monitored"] = True
 
 
 def main():
