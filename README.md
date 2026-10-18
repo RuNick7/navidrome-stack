@@ -113,6 +113,14 @@ python3 scripts/complete-albums.py --apply    # отправить; повтор
 
 Синглы и EP находятся, только если они включены в *Settings → Profiles → Metadata*.
 
+**Заблокированные альбомы.** Soulseek скрывает названия многих популярных альбомов, и Soularr их не находит. `scripts/track-search.py` берёт из лога Soularr альбомы с «Search failed», ищет их по названиям треков, скачивает папку целиком и отдаёт Lidarr на импорт:
+
+```bash
+python3 scripts/track-search.py --limit 20
+# автоматически раз в 30 минут (crontab -e):
+*/30 * * * * cd /root/navidrome-stack && python3 scripts/track-search.py >> data/track-search.log 2>&1
+```
+
 ## Фаза 4. Моя волна (AudioMuse-AI)
 
 ```bash
