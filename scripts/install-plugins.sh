@@ -19,7 +19,9 @@ chown -R "${PUID}:${PGID}" data 2>/dev/null || true
 
 # Умные плейлисты кладём прямо на Диск: Navidrome ищет их в MUSIC_DIR/_playlists
 if mountpoint -q "$MUSIC_DIR"; then
-  mkdir -p "$MUSIC_DIR/_playlists" "$MUSIC_DIR/lidarr"
+  mkdir -p "$MUSIC_DIR/_playlists" "$MUSIC_DIR/lidarr" "$MUSIC_DIR/soulseek/failed_imports"
+  # сюда Soularr складывает альбомы, которые Lidarr не принял: в Navidrome это дубли
+  touch "$MUSIC_DIR/soulseek/failed_imports/.ndignore"
   cp navidrome/playlists/*.nsp "$MUSIC_DIR/_playlists/"
 else
   echo "$MUSIC_DIR не смонтирован: плейлисты не скопированы, запустите скрипт после rclone" >&2

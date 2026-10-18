@@ -51,7 +51,14 @@ convert() {
   tmp="$TMP/$$.opus"
 
   if [ -e "$dst" ]; then
-    echo "пропуск, уже есть: $dst"
+    # тот же трек скачан повторно рядом с готовым Opus: оригинал лишний
+    a="$(duration "$src")"
+    b="$(duration "$dst")"
+    if [ -n "$a" ] && [ -n "$b" ] && [ $((a - b)) -le 2 ] && [ $((b - a)) -le 2 ]; then
+      rm -f "$src" && echo "удалён дубль: $src"
+    else
+      echo "пропуск, уже есть $dst с другой длительностью: $src"
+    fi
     return
   fi
 
@@ -81,7 +88,7 @@ if [ "${FIX_COVERS:-false}" = "true" ]; then
 fi
 
 while true; do
-  find "$ROOT" -path "$ROOT/_playlists" -prune -o -type f \
+  find "$ROOT" \( -path "$ROOT/_playlists" -o -name failed_imports \) -prune -o -type f \
     \( -iname '*.flac' -o -iname '*.mp3' -o -iname '*.m4a' -o -iname '*.aac' \
        -o -iname '*.ogg' -o -iname '*.wav' -o -iname '*.alac' -o -iname '*.wma' \) \
     -mmin +"$MIN_AGE" -print0 |
