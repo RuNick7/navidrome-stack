@@ -86,13 +86,6 @@ docker compose up -d
 
 Сервис `opus-converter` раз в 15 минут перекодирует все MP3/FLAC/M4A старше 30 минут в Opus 192 kbps (`OPUS_BITRATE`) и удаляет оригинал, если длительность совпала. Обложка встраивается в сам файл (до 600 px). MP3 при этом теряют немного качества (повторное сжатие). В Lidarr отключите *Upgrades Allowed* в профиле качества, иначе он будет перекачивать альбомы.
 
-Старые версии конвертера клали `cover.jpg` в папку, и в папках плейлистов Explo она ставилась на все альбомы. Убрать такие общие обложки и пересканировать:
-
-```bash
-docker compose run --rm -e FIX_COVERS=true opus-converter
-docker compose exec navidrome /app/navidrome scan --full
-```
-
 ### Дискографии исполнителей (Lidarr + Soularr)
 
 Lidarr хранит список исполнителей и знает их альбомы, Soularr раз в 5 минут ищет недостающие альбомы через slskd, Lidarr переносит скачанное в `/mnt/music/lidarr`.
@@ -102,16 +95,6 @@ Lidarr хранит список исполнителей и знает их а�
 3. *Settings → Media Management → Root Folders*: добавить `/mnt/music/lidarr`.
 4. *Settings → General → API Key* скопировать в `data/soularr/config.ini` (`[Lidarr] api_key`), туда же `SLSKD_API_KEY` из `.env` (`[Slskd] api_key`), затем `docker compose restart soularr`.
 5. *Artist → Add New*: найти исполнителя, Monitor: All Albums, нажать *Add*. Через несколько минут Soularr начнёт качать (`docker compose logs -f soularr`).
-
-**Докачать неполные альбомы.** Скрипт находит в Navidrome альбомы, от которых есть 1–2 трека, и отмечает их в Lidarr (исполнитель добавляется без всей дискографии):
-
-```bash
-# в .env: ND_USER, ND_PASSWORD (Navidrome), LIDARR_API_KEY
-python3 scripts/complete-albums.py            # пробный прогон
-python3 scripts/complete-albums.py --apply    # отправить; повторить через пару минут для новых исполнителей
-```
-
-Синглы и EP находятся, только если они включены в *Settings → Profiles → Metadata*.
 
 **Заблокированные альбомы.** Soulseek скрывает названия многих популярных альбомов, и Soularr их не находит. `scripts/track-search.py` берёт из лога Soularr альбомы с «Search failed», ищет их по названиям треков, скачивает папку целиком и отдаёт Lidarr на импорт:
 
@@ -132,7 +115,7 @@ ssh -L 8000:127.0.0.1:8000 <сервер>   # первый вход: http://127.
 1. Setup Wizard: сервер Navidrome, URL `http://navidrome:4533`, логин и пароль Navidrome; задать логин, пароль и **API token** AudioMuse.
 2. После мастера (включена аутентификация) интерфейс доступен по `https://<домен>:33333`.
 3. Запустить анализ библиотеки ночью. Распознавание текстов (Whisper) отключено ради памяти.
-4. В Navidrome *Настройки → Plugins → AudioMuse-AI*: URL `http://audiomuse-flask:8000`, тот же API token.
+4. В Navidrome *Настройки → Plugins → AudioMuse-AI*: URL `http://audiomuse-flask:8000`, тот же API token. Поле *Server Name* оставить пустым или вписать имя сервера из мастера AudioMuse, иначе AudioMuse отвечает «Unknown server».
 
 Плейлисты кластеризации AudioMuse называются тегами вроде `Indie_Rock_Fast_Danceable_automatic`. `scripts/tidy-playlists.py` переименовывает их в короткие русские («Инди, рок · быстро, танцевально») и ставит обложку по настроению; при новой кластеризации удаляет прошлый набор. Запуск по cron: `15 * * * * cd /root/navidrome-stack && python3 scripts/tidy-playlists.py >> data/tidy-playlists.log 2>&1`.
 
@@ -156,7 +139,6 @@ ssh -L 8000:127.0.0.1:8000 <сервер>   # первый вход: http://127.
 | `new-this-week.nsp` | Новое за неделю |
 | `never-played.nsp` | Ни разу не играло |
 | `highly-rated.nsp` | Оценка 4+ |
-| `rock-90s.nsp` | пример по жанру и году |
 
 Новые удобно собирать в Feishin. Синтаксис: <https://www.navidrome.org/docs/usage/features/smart-playlists/>.
 

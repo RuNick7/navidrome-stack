@@ -30,22 +30,6 @@ picture_tag() {
   { u32 3; u32 10; printf image/jpeg; u32 0; u32 0; u32 0; u32 0; u32 0; u32 "$size"; cat "$img"; } | base64 -w0
 }
 
-# Удаляет cover.jpg из папок, где лежат треки разных альбомов: такая обложка
-# ставилась на все альбомы папки (плейлисты Explo, разовые загрузки slskd).
-fix_covers() {
-  find "$ROOT" -path "$ROOT/_playlists" -prune -o -type f -name cover.jpg -print0 |
-    while IFS= read -r -d '' c; do
-      local dir n
-      dir="$(dirname "$c")"
-      n=$(find "$dir" -maxdepth 1 -type f \( -iname '*.opus' -o -iname '*.flac' -o -iname '*.mp3' -o -iname '*.m4a' -o -iname '*.ogg' \) -print0 |
-        xargs -0 -r -n1 ffprobe -v error -show_entries format_tags=album:stream_tags=album -of csv=p=0 2>/dev/null |
-        sed '/^$/d' | sort -u | wc -l)
-      if [ "$n" -gt 1 ]; then
-        rm -f "$c" && echo "удалена общая обложка ($n альбомов): $c"
-      fi
-    done
-}
-
 convert() {
   local src="$1" dir base dst tmp a b pic
   dir="$(dirname "$src")"
@@ -86,11 +70,6 @@ convert() {
 
   cp "$tmp" "$dst" && rm -f "$tmp" "$src" && echo "готово: $dst"
 }
-
-if [ "${FIX_COVERS:-false}" = "true" ]; then
-  fix_covers
-  exit 0
-fi
 
 while true; do
   find "$ROOT" \( -path "$ROOT/_playlists" -o -name failed_imports \) -prune -o -type f \
