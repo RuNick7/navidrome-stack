@@ -109,6 +109,8 @@ if env.get("LIDARR_API_KEY"):
     events = {}
     for e in hist if isinstance(hist, list) else []:
         events[e["eventType"]] = events.get(e["eventType"], 0) + 1
+    imported_albums = {e.get("albumId") for e in (hist if isinstance(hist, list) else [])
+                       if e.get("eventType") == "trackFileImported"}
     albums = get("http://127.0.0.1:8686/api/v1/album", h)
     albums = albums if isinstance(albums, list) else []
     mon = [a for a in albums if a.get("monitored")]
@@ -117,7 +119,7 @@ if env.get("LIDARR_API_KEY"):
     print(f"  отмечено альбомов: {len(mon)} (скачаны {len(done)}, частично {len(partial)}, "
           f"без файлов {len(mon) - len(done) - len(partial)}); в Missing: {missing.get('totalRecords', '?')}, "
           f"в очереди: {queue.get('totalRecords', '?')}")
-    print(f"  за {HOURS} ч: импортировано альбомов {events.get('downloadImported', 0)}, "
+    print(f"  за {HOURS} ч: импортировано альбомов {len(imported_albums)}, "
           f"треков {events.get('trackFileImported', 0)}, не импортировано {events.get('albumImportIncomplete', 0)}")
     for e in (get("http://127.0.0.1:8686/api/v1/health", h) or []):
         if isinstance(e, dict) and e.get("type") == "error" and "indexers" not in e.get("message", ""):
