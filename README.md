@@ -104,6 +104,29 @@ python3 scripts/track-search.py --limit 20
 */30 * * * * cd /root/navidrome-stack && python3 scripts/track-search.py >> data/track-search.log 2>&1
 ```
 
+**Дискографии всех, кто есть в библиотеке.** `scripts/lidarr-artists.py` добавляет в Lidarr исполнителей, у которых в Navidrome 3 и больше трека (по MusicBrainz ID из тегов или по однозначному имени, с транслитом: Zemfira = Земфира), и включает слежение за всеми их альбомами и новыми релизами:
+
+```bash
+python3 scripts/lidarr-artists.py            # показать, что изменится
+python3 scripts/lidarr-artists.py --apply    # применить
+# раз в сутки (crontab -e):
+40 4 * * * cd /root/navidrome-stack && /usr/bin/python3 scripts/lidarr-artists.py --apply >> data/lidarr-artists.log 2>&1
+```
+
+### Дубли и разбитые альбомы
+
+Треки из плейлистов (explo) и Soulseek приходят поштучно, поэтому одна песня оказывается и отдельным треком, и в альбоме из Lidarr, а мюзикл распадается на альбомы по исполнителям (у каждого трека свой «исполнитель альбома»).
+
+- `scripts/dedupe-library.py` находит копии песен, которые есть в Lidarr (то же название ±3 с, тот же исполнитель с учётом транслита или тот же альбом), и пишет отчёт `data/dedupe-report.tsv`. С `--apply` на полминуты останавливает Navidrome, переносит лайки, прослушивания, оценки и записи плейлистов на копию из Lidarr (копия базы — `data/navidrome/navidrome.db.bak-dedupe-*`), удаляет файлы и запускает сканирование.
+- `scripts/tidy-albums.py` склеивает части одного релиза: выставляет файлам explo и Soulseek название, исполнителя альбома (у мюзиклов — состав, у саундтреков — Various Artists), дату и MusicBrainz ID главной части. Файлы Lidarr не трогает; похожие версии песен, которые в альбоме уже есть, складывает в `data/tidy-albums-variants.tsv` для ручной проверки. Старые теги — в `data/tidy-albums-*.json`.
+
+```bash
+python3 scripts/dedupe-library.py && python3 scripts/tidy-albums.py    # только отчёты
+python3 scripts/dedupe-library.py --apply
+docker run --rm -v /root/navidrome-stack:/stack -v /mnt/music:/mnt/music python:3.13-slim \
+  sh -c "pip install -q --root-user-action=ignore mutagen && python /stack/scripts/tidy-albums.py --apply"
+```
+
 ## Фаза 4. Моя волна (AudioMuse-AI)
 
 ```bash
@@ -114,12 +137,16 @@ ssh -L 8000:127.0.0.1:8000 <сервер>   # первый вход: http://127.
 
 1. Setup Wizard: сервер Navidrome, URL `http://navidrome:4533`, логин и пароль Navidrome; задать логин, пароль и **API token** AudioMuse.
 2. После мастера (включена аутентификация) интерфейс доступен по `https://<домен>:33333`.
-3. Запустить анализ библиотеки ночью. Распознавание текстов (Whisper) отключено ради памяти.
+3. Запустить анализ библиотеки ночью. Распознавание текстов (Whisper) отключено ради памяти. Новые треки AudioMuse анализирует сам: на странице *Cron* заведён ежедневный анализ в 03:30.
 4. В Navidrome *Настройки → Plugins → AudioMuse-AI*: URL `http://audiomuse-flask:8000`, тот же API token. Поле *Server Name* оставить пустым или вписать имя сервера из мастера AudioMuse, иначе AudioMuse отвечает «Unknown server».
 
 Плейлисты кластеризации AudioMuse называются тегами вроде `Indie_Rock_Fast_Danceable_automatic`. `scripts/tidy-playlists.py` переименовывает их в короткие русские («Инди, рок · быстро, танцевально») и ставит обложку по настроению; при новой кластеризации удаляет прошлый набор. Запуск по cron: `15 * * * * cd /root/navidrome-stack && python3 scripts/tidy-playlists.py >> data/tidy-playlists.log 2>&1`.
 
 Готово, когда Instant Mix в Navidrome подбирает по звучанию, а в AudioMuse-AI работает Sonic Fingerprint.
+
+### VaginaWave
+
+Клиент с «Моей волной» живёт отдельным контейнером в `/opt/volna` (репозиторий RuNick7/VaginaWave), в той же сети Docker. Caddy отдаёт ему `https://<домен>/volna/`, остальное на основном домене, как и раньше, уходит в Navidrome.
 
 ### Исполнители через запятую
 

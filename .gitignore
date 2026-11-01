@@ -2,3 +2,4 @@
 explo/explo.env
 data/
 __pycache__/
+caddy/*.bak-*

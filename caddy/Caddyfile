@@ -4,7 +4,18 @@
 
 {$ND_DOMAIN}:{$HTTPS_PORT} {
 	encode zstd gzip
-	reverse_proxy navidrome:4533
+
+	# Volna: «Моя волна» и её веб-версия, живёт в /opt/volna
+	redir /volna /volna/ 308
+	handle_path /volna/* {
+		reverse_proxy volna:8765 {
+			header_up X-Forwarded-Prefix /volna
+		}
+	}
+
+	handle {
+		reverse_proxy navidrome:4533
+	}
 }
 
 {$ND_DOMAIN}:{$SLSKD_HTTPS_PORT} {
