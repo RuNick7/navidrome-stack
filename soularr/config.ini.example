@@ -17,7 +17,8 @@ url_base = /
 download_dir = /mnt/music/soulseek
 delete_searches = True
 stalled_timeout = 3600
-remote_queue_timeout = 300
+# пиры с длинной очередью отдают файлы не сразу: ждём до получаса, прежде чем сдаться
+remote_queue_timeout = 1800
 
 [Release Settings]
 use_selected_lidarr_release = False
@@ -40,7 +41,8 @@ ignored_users =
 album_prepend_artist = True
 search_type = incrementing_page
 number_of_albums_to_grab = 10
-title_blacklist = live,karaoke,instrumental
+# ищется подстрокой: просто «live» отсекало бы и «Alive», «Deliver», «Oliver»
+title_blacklist = (live,[live, - live,live at the ,live in concert,karaoke,(instrumental,[instrumental,instrumental version
 search_blacklist =
 search_source = missing
 failed_import_denylist = True

@@ -104,7 +104,7 @@ python3 scripts/track-search.py --limit 20
 */30 * * * * cd /root/navidrome-stack && python3 scripts/track-search.py >> data/track-search.log 2>&1
 ```
 
-**Дискографии всех, кто есть в библиотеке.** `scripts/lidarr-artists.py` добавляет в Lidarr исполнителей, у которых в Navidrome 3 и больше трека (по MusicBrainz ID из тегов или по однозначному имени, с транслитом: Zemfira = Земфира), и включает слежение за всеми их альбомами и новыми релизами:
+**Дискографии всех, кто есть в библиотеке.** `scripts/lidarr-artists.py` добавляет в Lidarr исполнителей, у которых в Navidrome 3 и больше трека (по MusicBrainz ID из тегов или по однозначному имени, с транслитом: Zemfira = Земфира), и включает слежение за всеми их альбомами и новыми релизами. Ошибочно найденного тёзку удаляйте в Lidarr с галочкой *Add List Exclusion*: исключённых скрипт не добавляет снова (так убран диджей Jay Z, которого MusicBrainz ID из тегов подставил вместо JAŸ-Z):
 
 ```bash
 python3 scripts/lidarr-artists.py            # показать, что изменится
@@ -112,6 +112,18 @@ python3 scripts/lidarr-artists.py --apply    # применить
 # раз в сутки (crontab -e):
 40 4 * * * cd /root/navidrome-stack && /usr/bin/python3 scripts/lidarr-artists.py --apply >> data/lidarr-artists.log 2>&1
 ```
+
+**Синглы и EP.** Профиль метаданных Standard ждёт только студийные альбомы, а многие исполнители выпускают в основном синглы (у MORGENSHTERN 7 альбомов и 58 синглов). Поэтому у всех исполнителей стоит профиль «Альбомы, EP и синглы» (студийные, без ремиксов, сборников и концертов), и он же — профиль по умолчанию корневой папки: с ним добавляют исполнителей `scripts/lidarr-artists.py` и VaginaWave. Композиторы мюзиклов (Alan Menken, John Kander и др.) стоят на профиле None: их «дискографии» — сотни саундтреков.
+
+**Раздача в Soulseek.** Многие пиры не отдают файлы тем, кто сам ничего не раздаёт («Transfer rejected: File not shared»). `scripts/soulseek-share.py` копирует самые слушаемые альбомы из папки Lidarr (по умолчанию 2 ГБ) на локальный диск, в `${BUFFER_DIR}/shared`, которую slskd раздаёт как `/shared`: облако при отдаче не читается. Ограничения: `SLSKD_UPLOAD_SPEED_LIMIT_KIB=512` и 2 слота в `.env`, на одного пользователя 600 МБ в очереди, 1,5 ГБ в день и 5 ГБ в неделю, тем, кто сам ничего не раздаёт, — 1 слот и 64 КБ/с (`data/slskd/slskd.yml`, раздел `transfers`).
+
+```bash
+python3 scripts/soulseek-share.py             # показать, что попадёт в раздачу
+python3 scripts/soulseek-share.py --apply     # скопировать; затем пересканировать раздачу:
+curl -X PUT -H "X-API-Key: $SLSKD_API_KEY" http://127.0.0.1:5030/api/v0/shares
+```
+
+**Докачка с YouTube Music** (`youtube/`, сервис `youtube-fallback`, выключен). Берёт из «Missing» альбомы, на которых Soularr споткнулся, и синглы, находит релиз в YouTube Music, сверяет треки с Lidarr, качает звук без перекодирования, пишет теги MusicBrainz и отдаёт Lidarr на импорт. Поиск работает, но с IP этого сервера YouTube не отдаёт звук без проверки «вы не робот», поэтому сервис в отдельном профиле и сам не запускается. Включить: `docker compose --profile youtube up -d youtube-fallback`; проверить без скачивания: `docker compose run --rm youtube-fallback python /app/fallback.py --once --dry`.
 
 ### Дубли и разбитые альбомы
 
@@ -150,7 +162,7 @@ ssh -L 8000:127.0.0.1:8000 <сервер>   # первый вход: http://127.
 
 ### Исполнители через запятую
 
-По умолчанию Navidrome делит исполнителей только по `feat.`, `/` и `;`, поэтому «Скриптонит, Andy Panda» становится одним исполнителем. В [`navidrome/navidrome.toml`](navidrome/navidrome.toml) добавлено деление по `, `, ` & `, ` x `; группы с запятой или & в названии перечислены в `ArtistSplitExceptions`. После изменения: `docker compose up -d navidrome && docker compose exec navidrome /app/navidrome scan --full`.
+По умолчанию Navidrome делит исполнителей только по `feat.`, `/` и `;`, поэтому «Скриптонит, Andy Panda» становится одним исполнителем. В [`navidrome/navidrome.toml`](navidrome/navidrome.toml) добавлено деление по `, `, ` & `, ` x `; группы с запятой или & в названии перечислены в `ArtistSplitExceptions`. Теги `ARTISTS`/`ALBUMARTISTS` (списки от Lidarr) делятся по `;`, `/` и `, `: при перекодировании в Opus ffmpeg склеивает список в одну строку вроде «9mice;Kai Angel». Группы из Lidarr с такими знаками в названии («Joey Valence & Brae», «25/17») добавляет в исключения `python3 scripts/split-exceptions.py`. После изменения: `docker compose up -d navidrome && docker compose exec navidrome /app/navidrome scan --full`.
 
 ## Фаза 5. Умные плейлисты
 

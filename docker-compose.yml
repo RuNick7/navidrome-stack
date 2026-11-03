@@ -195,6 +195,29 @@ services:
       - ${MUSIC_PARENT}:${MUSIC_PARENT}:rslave
     cpus: 2
 
+  # Докачка с YouTube Music того, что Soularr не смог скачать через Soulseek, и синглов
+  # исполнителей с профилем «Альбомы, EP и синглы». Раз в полчаса, импорт — через Lidarr.
+  # Выключена (отдельный профиль youtube): с IP этого сервера YouTube не отдаёт звук без
+  # проверки «вы не робот». Включить: docker compose --profile youtube up -d youtube-fallback
+  youtube-fallback:
+    <<: *common
+    profiles: [youtube]
+    build: ./youtube
+    image: navidrome-stack/youtube-fallback
+    user: "${PUID}:${PGID}"
+    environment:
+      TZ: ${TZ}
+      HOME: /data
+      LIDARR_URL: http://lidarr:8686
+      LIDARR_API_KEY: ${LIDARR_API_KEY}
+      YOUTUBE_STAGING: ${MUSIC_DIR}/youtube
+      YOUTUBE_ALBUMS_PER_RUN: "4"
+      YOUTUBE_INTERVAL: "1800"
+    volumes:
+      - ./data/youtube:/data
+      - ./data/soularr:/soularr:ro
+      - ${MUSIC_PARENT}:${MUSIC_PARENT}:rslave
+
   # --- profile: ai ---------------------------------------------------------
 
   audiomuse-postgres:

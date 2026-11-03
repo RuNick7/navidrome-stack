@@ -165,6 +165,9 @@ def main():
         sk = skeleton(a["artistName"])
         by_skeleton[sk] = None if sk in by_skeleton else a
     root = lidarr("GET", "rootfolder")[0]
+    # удалённых из Lidarr с пометкой «не добавлять снова» (Import List Exclusions) не возвращаем:
+    # так убирают тёзок, которых подставил MusicBrainz ID в тегах (диджей Jay Z вместо JAŸ-Z)
+    excluded = {e["foreignId"] for e in lidarr("GET", "importlistexclusion") or []}
 
     known, new = {}, []
     for k in wanted:
@@ -190,6 +193,10 @@ def main():
             continue
         if found is None:
             missing.append(f"{name} — {why}")
+            state[k] = now
+            continue
+        if found.get("foreignArtistId") in excluded:
+            missing.append(f"{name} — исключён в Lidarr")
             state[k] = now
             continue
         if args.apply:

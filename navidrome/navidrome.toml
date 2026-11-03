@@ -2,16 +2,27 @@
 # Подключается в docker-compose.yml как /data/navidrome.toml. После изменения: docker compose up -d navidrome
 # и полный пересканирование (docker compose exec navidrome /app/navidrome scan --full).
 
-# Делить исполнителей в тегах ARTIST и ALBUMARTIST не только по feat., но и по запятой, & и x:
+# Делить исполнителей в тегах ARTIST и ALBUMARTIST не только по feat., но и по запятой, & и x, а также
+# по «;» и «/» без пробелов (так ffmpeg склеивает несколько исполнителей при перекодировании в Opus):
 # «Скриптонит, Andy Panda» станет двумя исполнителями.
 [Tags.artist]
-Split = [" / ", " feat. ", " feat ", " ft. ", " ft ", "; ", ", ", " & ", " x ", " × "]
+Split = [" / ", "/", " feat. ", " feat ", " ft. ", " ft ", "; ", ";", ", ", " & ", " x ", " × "]
 
 [Tags.albumartist]
-Split = [" / ", " feat. ", " feat ", " ft. ", " ft ", "; ", ", ", " & ", " x ", " × "]
+Split = [" / ", "/", " feat. ", " feat ", " ft. ", " ft ", "; ", ";", ", ", " & ", " x ", " × "]
+
+# ARTISTS и ALBUMARTISTS — списки исполнителей от Lidarr (MusicBrainz). При перекодировании в Opus
+# ffmpeg склеивает список в одну строку: «9mice;Kai Angel», «Frank Sinatra/Count Basie», «Macan, Yasmi».
+# Делим обратно; группы со знаком в названии (25/17, K/DA) — в ArtistSplitExceptions ниже.
+[Tags.artists]
+Split = [";", "/", ", "]
+
+[Tags.albumartists]
+Split = [";", "/", ", "]
 
 [Scanner]
-# Названия групп, которые делить нельзя. Добавляйте свои по мере нахождения.
+# Названия групп, которые делить нельзя. Добавляйте свои по мере нахождения; группы из Lidarr
+# добавляет scripts/split-exceptions.py.
 ArtistSplitExceptions = [
   "Earth, Wind & Fire", "Simon & Garfunkel", "Crosby, Stills, Nash & Young", "Tyler, The Creator",
   "Hall & Oates", "Mumford & Sons", "Nick Cave & The Bad Seeds", "Florence + The Machine",
@@ -19,5 +30,19 @@ ArtistSplitExceptions = [
   "Echo & The Bunnymen", "Siouxsie and the Banshees", "Belle & Sebastian", "Peter, Bjorn and John",
   "Brooks & Dunn", "Ike & Tina Turner", "Bob Marley & The Wailers", "Prince & The Revolution",
   "Tom Petty & The Heartbreakers", "Huey Lewis & The News", "Hootie & The Blowfish",
-  "Чиж & Co",
+  "Чиж & Co", "Grover Washington, Jr.",
+  # --- ниже — группы из Lidarr, пересобирает scripts/split-exceptions.py ---
+  "25/17",
+  "Bohren & der Club of Gore",
+  "Joey Valence & Brae",
+  "K/DA",
+  "Leslie Odom, Jr.",
+  "Me & My",
+  "MYTH & ROID",
+  "Nancy Sinatra & Lee Hazlewood",
+  "Rauf & Faik",
+  "Richy Mitch & The Coal Miners",
+  "The Mamas & the Papas",
+  "V $ X V PRiNCE",
+  "WHY, BERRY",
 ]
