@@ -16,9 +16,11 @@ host_url = http://slskd:5030
 url_base = /
 download_dir = /mnt/music/soulseek
 delete_searches = True
-stalled_timeout = 3600
-# пиры с длинной очередью отдают файлы не сразу: ждём до получаса, прежде чем сдаться
-remote_queue_timeout = 1800
+# проход ждёт, пока докачаются все его альбомы: медленный пир держит всю очередь.
+# Не скачалось — альбом вернётся через сутки (soularr_plus.py), и ответит другой пир.
+stalled_timeout = 2400
+# пир так и не начал отдавать (длинная очередь) — через 15 минут сдаёмся
+remote_queue_timeout = 900
 
 [Release Settings]
 use_selected_lidarr_release = False
@@ -39,8 +41,10 @@ allowed_filetypes = mp3 320,flac 16/44.1,flac,mp3
 ignored_users =
 # Искать «Исполнитель Альбом»: по одному названию альбома слишком много мусора
 album_prepend_artist = True
-search_type = incrementing_page
-number_of_albums_to_grab = 10
+# priority — очередь soularr_plus.py: свежедобавленные исполнители, альбомы, EP, затем синглы;
+# ненайденное повторяется с паузой. Оригинальные значения (incrementing_page и др.) тоже работают.
+search_type = priority
+number_of_albums_to_grab = 15
 # ищется подстрокой: просто «live» отсекало бы и «Alive», «Deliver», «Oliver»
 title_blacklist = (live,[live, - live,live at the ,live in concert,karaoke,(instrumental,[instrumental,instrumental version
 search_blacklist =

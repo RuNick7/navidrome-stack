@@ -88,7 +88,16 @@ docker compose up -d
 
 ### Дискографии исполнителей (Lidarr + Soularr)
 
-Lidarr хранит список исполнителей и знает их альбомы, Soularr раз в 5 минут ищет недостающие альбомы через slskd, Lidarr переносит скачанное в `/mnt/music/lidarr`.
+Lidarr хранит список исполнителей и знает их альбомы, Soularr ищет недостающие альбомы через slskd (по 15 за проход, проходы идут друг за другом), Lidarr переносит скачанное в `/mnt/music/lidarr`.
+
+Soularr собирается из `soularr/` с доработками `soularr/soularr_plus.py` (`search_type = priority` в `config.ini`):
+
+- **Запрещённые имена.** Сервер Soulseek рассылает клиентам список запрещённых фраз, и на «The Beatles Abbey Road» не отвечает никто, а «\*eatles Abbey Road» находит тысячи файлов. Если поиск пуст, Soularr пробует название без скобок, имя со звёздочкой вместо первой буквы, звёздочки во всём запросе и одно название альбома (помогает, когда в MusicBrainz имя другое, чем в файлах: Ye и Kanye West). Исполнителей, которым помогли звёздочки, запоминает (`data/soularr/soularr-plus.json`) и дальше ищет сразу так.
+- **Очередь по приоритету** вместо прохода по алфавиту: сначала альбомы и EP исполнителей, добавленных за две недели (нажали «Скачать дискографию» — получили в тот же день), затем все альбомы, EP и только потом синглы; внутри — ещё не искавшиеся, популярные, новые.
+- **Повтор с паузой.** Не нашлось — снова через 7, 14, 28 дней, не реже раза в 60; нашлось, но не скачалось — через 1, 2, 4… до 30 дней.
+- **Синглы-дубли не ищутся**: если все песни сингла есть на альбоме или EP того же исполнителя, песня придёт с альбомом.
+
+Что возьмут следующие проходы, без поиска и загрузок: `docker compose exec soularr python /app/soularr.py --plan`.
 
 1. `./scripts/install-plugins.sh` (создаст `data/soularr/config.ini` и `/mnt/music/lidarr`), `docker compose up -d`.
 2. `https://<домен>:55555`: задать логин и пароль Lidarr.
@@ -96,7 +105,7 @@ Lidarr хранит список исполнителей и знает их а�
 4. *Settings → General → API Key* скопировать в `data/soularr/config.ini` (`[Lidarr] api_key`), туда же `SLSKD_API_KEY` из `.env` (`[Slskd] api_key`), затем `docker compose restart soularr`.
 5. *Artist → Add New*: найти исполнителя, Monitor: All Albums, нажать *Add*. Через несколько минут Soularr начнёт качать (`docker compose logs -f soularr`).
 
-**Заблокированные альбомы.** Soulseek скрывает названия многих популярных альбомов, и Soularr их не находит. `scripts/track-search.py` берёт из лога Soularr альбомы с «Search failed», ищет их по названиям треков, скачивает папку целиком и отдаёт Lidarr на импорт:
+**Заблокированные альбомы.** Некоторые названия Soulseek скрывает и со звёздочками (My Beautiful Dark Twisted Fantasy). `scripts/track-search.py` берёт альбомы, которые Soularr не нашёл, ищет их по названиям треков (для запрещённых имён — со звёздочкой), скачивает папку целиком и, когда все файлы на диске, отдаёт Lidarr на импорт; через сутки без файлов загрузка считается неудачной, а не висит вечно:
 
 ```bash
 python3 scripts/track-search.py --limit 20
@@ -104,7 +113,7 @@ python3 scripts/track-search.py --limit 20
 */30 * * * * cd /root/navidrome-stack && python3 scripts/track-search.py >> data/track-search.log 2>&1
 ```
 
-**Дискографии всех, кто есть в библиотеке.** `scripts/lidarr-artists.py` добавляет в Lidarr исполнителей, у которых в Navidrome 3 и больше трека (по MusicBrainz ID из тегов или по однозначному имени, с транслитом: Zemfira = Земфира), и включает слежение за всеми их альбомами и новыми релизами. Ошибочно найденного тёзку удаляйте в Lidarr с галочкой *Add List Exclusion*: исключённых скрипт не добавляет снова (так убран диджей Jay Z, которого MusicBrainz ID из тегов подставил вместо JAŸ-Z):
+**Дискографии всех, кто есть в библиотеке.** `scripts/lidarr-artists.py` добавляет в Lidarr исполнителей, у которых в Navidrome 3 и больше трека, и включает слежение за всеми их альбомами и новыми релизами. Исполнитель ищется по MusicBrainz ID из тегов, а без него — по имени с точностью до транслита, порядка слов и артикля (Zemfira = Земфира, Cure = The Cure, Béla Bartók = Bartók Béla); из «Moby Featuring Mylene Farmer», «David Bowie/Tony Visconti» берётся главный. Тёзок (Drake, Chief Keef, Tony Bennett) и другое написание (Splean = Сплин, Skryptonite = Скриптонит, A$AP Ferg = FERG) различают альбомы из библиотеки (Lidarr находит их по названию и называет исполнителя), псевдонимы и размер дискографии из метаданных Lidarr (api.lidarr.audio); без уверенности скрипт никого не добавляет. Кого не нашёл, ищет снова через 30 дней или сразу с `--retry`. Той же логикой пользуется кнопка «Скачать дискографию» в VaginaWave. Ошибочно найденного тёзку удаляйте в Lidarr с галочкой *Add List Exclusion*: исключённых скрипт не добавляет снова (так убран диджей Jay Z, которого MusicBrainz ID из тегов подставил вместо JAŸ-Z):
 
 ```bash
 python3 scripts/lidarr-artists.py            # показать, что изменится
@@ -187,7 +196,7 @@ ssh -L 8000:127.0.0.1:8000 <сервер>   # первый вход: http://127.
 |---|---|---|
 | Navidrome, скан | слежение за папкой + полный скан раз в час | `ND_SCANNER_SCHEDULE` |
 | Explo | ~50 треков в неделю (Weekly Exploration) | расписание в Explo UI |
-| Soulseek, загрузки | 3 одновременно | `SLSKD_DOWNLOAD_SLOTS` |
+| Soulseek, загрузки | 12 файлов одновременно | `SLSKD_DOWNLOAD_SLOTS` |
 | Soulseek, раздача | 2 слота, 2 МиБ/с, только локальная папка `shared` | `SLSKD_UPLOAD_*` |
 | Кэш rclone | 45 ГБ на SSD | `rclone-music.service` |
 | Выгрузка на Диск | остановка при суточном лимите Google 750 ГБ | `--drive-stop-on-upload-limit` |

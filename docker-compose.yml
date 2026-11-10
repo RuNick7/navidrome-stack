@@ -165,11 +165,17 @@ services:
   soularr:
     <<: *common
     profiles: [discovery]
-    image: ghcr.io/mrusse/soularr:${SOULARR_VERSION}
+    # Soularr + soularr/soularr_plus.py: обход запрещённых имён, очередь по приоритету, повтор с паузой
+    build:
+      context: ./soularr
+      args:
+        SOULARR_VERSION: ${SOULARR_VERSION}
+    image: navidrome-stack/soularr:${SOULARR_VERSION}-plus
     user: "${PUID}:${PGID}"
     environment:
       TZ: ${TZ}
-      SCRIPT_INTERVAL: "300"
+      # пауза между проходами: каждый проход и так ждёт, пока докачаются его альбомы
+      SCRIPT_INTERVAL: "60"
       WEBUI_ENABLED: "false"
     volumes:
       - ./data/soularr:/data

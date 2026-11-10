@@ -2,10 +2,12 @@
 """Докачивает альбомы, которые Soularr не нашёл по названию альбома.
 
 Soulseek блокирует названия многих популярных альбомов, но сами файлы находятся
-по названиям треков. Скрипт берёт из лога Soularr альбомы с «Search failed»,
-ищет «Исполнитель Трек», открывает папку найденного пользователя, проверяет,
-что в ней весь альбом, и ставит папку на загрузку в slskd. При следующем запуске
-скачанные папки отдаются Lidarr на импорт.
+по названиям треков. Скрипт берёт альбомы, которые Soularr не нашёл (состояние
+soularr_plus.py и «Search failed» в логе), ищет «Исполнитель Трек» (для запрещённых
+в Soulseek имён — со звёздочкой: «*eatles Something»), открывает папку найденного
+пользователя, проверяет, что в ней весь альбом, и ставит папку на загрузку в slskd.
+Когда все файлы папки лежат на диске, она отдаётся Lidarr на импорт; через сутки без
+файлов загрузка считается неудачной, и альбом снова ищется через RETRY_DAYS.
 
     python3 scripts/track-search.py            # 5 альбомов за запуск
     python3 scripts/track-search.py --limit 20
@@ -14,6 +16,7 @@ Soulseek блокирует названия многих популярных �
     */30 * * * * cd /root/navidrome-stack && python3 scripts/track-search.py >> data/track-search.log 2>&1
 """
 import argparse
+import glob
 import json
 import os
 import re
@@ -26,8 +29,11 @@ import urllib.request
 STACK = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE = os.path.join(STACK, "data", "track-search.json")
 SOULARR_LOG = os.path.join(STACK, "data", "soularr", "soularr.log")
+SOULARR_PLUS = os.path.join(STACK, "data", "soularr", "soularr-plus.json")
 AUDIO = ("mp3", "flac")
 RETRY_DAYS = 7
+DOWNLOAD_DAYS = 1  # сколько ждать файлов на диске, прежде чем считать загрузку неудачной
+ARTICLES = {"the", "a", "an"}
 
 
 def load_env(path):
@@ -70,16 +76,29 @@ class Api:
         return http(method, f"{self.base}/{path}{q}", self.h, body)
 
 
+def wildcard(name):
+    """«The Beatles» -> «*eatles»: так поиск обходит запрещённые в Soulseek имена."""
+    words = [w for w in name.split() if w.casefold() not in ARTICLES] or name.split()
+    return " ".join("*" + w[1:] if sum(c.isalnum() for c in w) >= 3 and w[0].isalnum() else w for w in words)
+
+
+def soularr_state():
+    try:
+        return json.load(open(SOULARR_PLUS, encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
 def failed_searches():
-    """Пары (альбом, исполнитель), которые Soularr не нашёл."""
-    found = set()
-    if not os.path.exists(SOULARR_LOG):
-        return found
-    for line in open(SOULARR_LOG, encoding="utf-8", errors="replace"):
-        m = re.search(r"Search failed for Album: (.*) - Artist: (.*)$", line.rstrip())
-        if m:
-            found.add((norm(m.group(1)), norm(m.group(2))))
-    return found
+    """Альбомы, которые Soularr не нашёл: id из состояния soularr_plus.py и пары (альбом, исполнитель) из лога."""
+    ids = {k for k, v in soularr_state().get("albums", {}).items() if v.get("last") == "notfound"}
+    pairs = set()
+    for log in sorted(glob.glob(SOULARR_LOG + "*")):
+        for line in open(log, encoding="utf-8", errors="replace"):
+            m = re.search(r"Search failed for Album: (.*) - Artist: (.*)$", line.rstrip())
+            if m:
+                pairs.add((norm(m.group(1)), norm(m.group(2))))
+    return ids, pairs
 
 
 def wanted_albums(lidarr):
@@ -131,24 +150,49 @@ def pick_folder(slskd, responses, titles):
     return None
 
 
-def import_finished(state, slskd, lidarr):
+def on_disk(path):
+    """Сколько готовых аудиофайлов в папке (конвертер мог уже перекодировать их в Opus)."""
+    try:
+        return sum(1 for f in os.listdir(path) if ext(f) in AUDIO + ("opus", "m4a", "ogg"))
+    except OSError:
+        return 0
+
+
+def import_finished(state, slskd, lidarr, now):
+    """Загрузки, которые закончились: отдать Lidarr на импорт; через сутки без файлов — неудача.
+
+    Список загрузок slskd ненадёжен: Soularr в конце каждого прохода чистит завершённые,
+    поэтому готовность определяется по файлам на диске."""
     for album_id, s in state.items():
+        if s.get("status") == "imported" and not s.get("checked"):
+            try:
+                stats = lidarr("GET", f"album/{album_id}").get("statistics") or {}
+            except urllib.error.HTTPError:
+                stats = {}
+            if stats.get("trackFileCount", 0) > 0:
+                s["checked"] = True
+            elif now - s.get("imported_at", s["tried"]) > DOWNLOAD_DAYS * 86400:
+                s.update(status="failed", tried=now)
+                print(f"Lidarr не импортировал: {s['title']} ({s.get('local')})")
+            continue
         if s.get("status") != "downloading":
             continue
         try:
             dl = slskd("GET", f"transfers/downloads/{urllib.parse.quote(s['user'])}")
-        except urllib.error.HTTPError:
+        except urllib.error.URLError:
             dl = {"directories": []}
-        files = [f for d in dl.get("directories", []) if d["directory"] == s["folder"] for f in d["files"]]
-        states = {f["state"] for f in files}
-        if files and all(x.startswith("Completed") for x in states):
-            if states == {"Completed, Succeeded"}:
-                lidarr("POST", "command", {"name": "DownloadedAlbumsScan", "path": s["local"]})
-                s["status"] = "imported"
-                print(f"импорт в Lidarr: {s['title']}")
-            else:
-                s["status"] = "failed"
-                print(f"загрузка не удалась: {s['title']}")
+        states = {f["state"] for d in dl.get("directories", []) if d["directory"] == s["folder"] for f in d["files"]}
+        if states and not all(x.startswith("Completed") for x in states):
+            continue  # ещё качается
+        failed = states and states != {"Completed, Succeeded"}
+        have = on_disk(s["local"])
+        if not failed and have >= s.get("count", 1):
+            lidarr("POST", "command", {"name": "DownloadedAlbumsScan", "path": s["local"]})
+            s.update(status="imported", imported_at=now)
+            print(f"импорт в Lidarr: {s['title']}")
+        elif failed or now - s["tried"] > DOWNLOAD_DAYS * 86400:
+            s.update(status="failed", tried=now)
+            print(f"загрузка не удалась: {s['title']} (на диске {have} из {s.get('count', '?')})")
 
 
 def main():
@@ -165,36 +209,45 @@ def main():
     downloads = os.path.join(env.get("MUSIC_DIR", "/mnt/music"), "soulseek")
 
     state = json.load(open(STATE)) if os.path.exists(STATE) else {}
-    import_finished(state, slskd, lidarr)
-
-    failed = failed_searches()
     now = time.time()
+    import_finished(state, slskd, lidarr, now)
+
+    failed_ids, failed_pairs = failed_searches()
+    banned = {v.get("name") for v in soularr_state().get("banned", {}).values()}
     todo = []
     for a in wanted_albums(lidarr):
         s = state.get(str(a["id"]))
         if s and (s["status"] in ("downloading", "imported") or now - s["tried"] < RETRY_DAYS * 86400):
             continue
-        if (norm(a["title"]), norm(a["artist"]["artistName"])) in failed:
+        if str(a["id"]) in failed_ids or (norm(a["title"]), norm(a["artist"]["artistName"])) in failed_pairs:
             todo.append(a)
+    # сначала альбомы, потом EP и синглы, как в очереди Soularr
+    todo.sort(key=lambda a: {"Album": 0, "EP": 1}.get(a.get("albumType"), 2))
     print(f"Soularr не нашёл: {len(todo)} альбомов, ищу {min(len(todo), args.limit)}")
 
     for a in todo[:args.limit]:
         artist, title = a["artist"]["artistName"], a["title"]
         tracks = [t["title"] for t in lidarr("GET", "track", albumId=a["id"])]
         entry = {"title": f"{artist} — {title}", "tried": now, "status": "notfound"}
+        names = [wildcard(artist)] if artist in banned else [artist, wildcard(artist)]
+        found = None
         # три самых длинных названия: короткие («Go», «Intro») дают мусор
         for track in sorted(set(tracks), key=len, reverse=True)[:3]:
-            try:
-                found = pick_folder(slskd, search(slskd, f"{artist} {track}"), tracks)
-            except (urllib.error.URLError, TimeoutError) as e:
-                print(f"  ошибка slskd ({e}) на {artist} — {track}")
-                found = None
-            time.sleep(10)  # Soulseek ограничивает частые поиски
+            for name in dict.fromkeys(names):
+                try:
+                    responses = search(slskd, f"{name} {track}")
+                    found = pick_folder(slskd, responses, tracks) if responses else None
+                except (urllib.error.URLError, TimeoutError) as e:
+                    print(f"  ошибка slskd ({e}) на {name} — {track}")
+                    responses, found = [], None
+                time.sleep(10)  # Soulseek ограничивает частые поиски
+                if responses:
+                    break  # ответы есть: звёздочки не нужны
             if found:
                 user, folder, files = found
                 slskd("POST", f"transfers/downloads/{urllib.parse.quote(user)}",
                       [{"filename": f"{folder}\\{f['filename']}", "size": f["size"]} for f in files])
-                entry.update(status="downloading", user=user, folder=folder,
+                entry.update(status="downloading", user=user, folder=folder, count=len(files),
                              local=os.path.join(downloads, folder.rsplit("\\", 1)[-1]))
                 print(f"+ {artist} — {title}: {len(files)} файлов от {user}")
                 break
