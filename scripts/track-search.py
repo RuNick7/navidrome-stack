@@ -16,6 +16,7 @@ soularr_plus.py и «Search failed» в логе), ищет «Исполните
     */30 * * * * cd /root/navidrome-stack && python3 scripts/track-search.py >> data/track-search.log 2>&1
 """
 import argparse
+import fcntl
 import glob
 import json
 import os
@@ -28,6 +29,7 @@ import urllib.request
 
 STACK = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE = os.path.join(STACK, "data", "track-search.json")
+LOCK = os.path.join(STACK, "data", "track-search.lock")  # крон и ручной запуск не должны перетирать состояние
 SOULARR_LOG = os.path.join(STACK, "data", "soularr", "soularr.log")
 SOULARR_PLUS = os.path.join(STACK, "data", "soularr", "soularr-plus.json")
 AUDIO = ("mp3", "flac")
@@ -158,6 +160,24 @@ def on_disk(path):
         return 0
 
 
+def import_folder(lidarr, folder, album_id=None):
+    """Импорт папки в Lidarr с явным альбомом и изданием, как «Ручной импорт» в его интерфейсе.
+
+    DownloadedAlbumsScan угадывает альбом по имени папки, а пиры называют папки как угодно
+    («CD 1»), и импорт молча не проходит. Здесь Lidarr сопоставляет файлы по тегам, а берём только
+    те, что он принял без замечаний и отнёс к нужному альбому. Возвращает число файлов в импорте."""
+    items = lidarr("GET", "manualimport", folder=folder, filterExistingFiles="false") or []
+    ok = [i for i in items if not i.get("rejections") and i.get("album") and i.get("tracks")
+          and (album_id is None or i["album"]["id"] == int(album_id))]
+    if not ok or len({i["album"]["id"] for i in ok}) != 1:
+        return 0
+    files = [{"path": i["path"], "artistId": i["artist"]["id"], "albumId": i["album"]["id"],
+              "albumReleaseId": i["albumReleaseId"], "trackIds": [t["id"] for t in i["tracks"]],
+              "quality": i["quality"], "indexerFlags": 0, "disableReleaseSwitching": False} for i in ok]
+    lidarr("POST", "command", {"name": "ManualImport", "files": files, "importMode": "move", "replaceExistingFiles": False})
+    return len(files)
+
+
 def import_finished(state, slskd, lidarr, now):
     """Загрузки, которые закончились: отдать Lidarr на импорт; через сутки без файлов — неудача.
 
@@ -187,7 +207,12 @@ def import_finished(state, slskd, lidarr, now):
         failed = states and states != {"Completed, Succeeded"}
         have = on_disk(s["local"])
         if not failed and have >= s.get("count", 1):
-            lidarr("POST", "command", {"name": "DownloadedAlbumsScan", "path": s["local"]})
+            try:
+                moved = import_folder(lidarr, s["local"], album_id)
+            except urllib.error.URLError:
+                moved = 0
+            if not moved:  # теги не опознаны: пусть Lidarr попробует сам, по имени папки
+                lidarr("POST", "command", {"name": "DownloadedAlbumsScan", "path": s["local"]})
             s.update(status="imported", imported_at=now)
             print(f"импорт в Lidarr: {s['title']}")
         elif failed or now - s["tried"] > DOWNLOAD_DAYS * 86400:
@@ -199,6 +224,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=5, help="сколько альбомов искать за запуск")
     args = ap.parse_args()
+    lock = open(LOCK, "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        sys.exit("track-search уже идёт: второй запуск перетёр бы его состояние")
 
     env = {**load_env(os.path.join(STACK, ".env")), **os.environ}
     for k in ("LIDARR_API_KEY", "SLSKD_API_KEY"):

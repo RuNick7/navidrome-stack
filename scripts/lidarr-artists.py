@@ -46,6 +46,9 @@ PAGE = 500
 FILLER = {"the", "a", "an", "and", "&", "и", "+"}
 AGENT = "lidarr-artists/2.0"
 METADATA = os.environ.get("LIDARR_METADATA_URL", "https://api.lidarr.audio/api/v0.4/")
+# Композитор с такой «дискографией» — это все записи его музыки чужими оркестрами (у Баха их 4,6 тыс.),
+# а не альбомы исполнителя. Его ставим на профиль метаданных None: скачанное остаётся, остальное не ищется.
+CATALOG_RELEASES = 150
 ALBUMS_PER_ARTIST = 6  # сколько названий альбомов из библиотеки держать для сверки с Lidarr
 NOT_ALBUMS = {"", "singles", "single", "unknown album", "[unknown album]", "unknown", "explo"}
 
@@ -147,6 +150,20 @@ def metadata(mbid):
         except (urllib.error.URLError, TimeoutError, ValueError):
             _meta[mbid] = {}
     return _meta[mbid]
+
+
+def is_catalog(artist, releases):
+    """Композитор с огромным каталогом чужих записей (Бах, Моцарт), а не исполнитель со своей дискографией."""
+    about = (artist.get("disambiguation") or "").casefold()
+    genres = [g.casefold() for g in artist.get("genres") or []]
+    composer = "composer" in about or "композитор" in about or genres[:1] == ["classical"]
+    return composer and releases > CATALOG_RELEASES
+
+
+def own_releases(mbid):
+    """Студийные альбомы, EP и синглы исполнителя в метаданных Lidarr: столько он принесёт в Missing."""
+    return sum(1 for a in metadata(mbid).get("Albums") or []
+               if a.get("Type") in ("Album", "EP", "Single") and not a.get("SecondaryTypes"))
 
 
 def no_releases(mbid):
@@ -337,6 +354,7 @@ def main():
                 return found
         return None
     root = lidarr("GET", "rootfolder")[0]
+    none_profile = next((p["id"] for p in lidarr("GET", "metadataprofile") if p["name"].casefold() == "none"), None)
     # удалённых из Lidarr с пометкой «не добавлять снова» (Import List Exclusions) не возвращаем:
     # так убирают тёзок, которых подставил MusicBrainz ID в тегах (диджей Jay Z вместо JAŸ-Z)
     excluded = {e["foreignId"] for e in lidarr("GET", "importlistexclusion") or []}
@@ -371,10 +389,11 @@ def main():
             missing.append(f"{name} — исключён в Lidarr")
             state[k] = now
             continue
+        catalog = none_profile is not None and is_catalog(found, own_releases(found["foreignArtistId"]))
         if args.apply:
             found.update(
                 qualityProfileId=root.get("defaultQualityProfileId") or 1,
-                metadataProfileId=root.get("defaultMetadataProfileId") or 1,
+                metadataProfileId=none_profile if catalog else root.get("defaultMetadataProfileId") or 1,
                 rootFolderPath=root["path"],
                 monitored=True,
                 monitorNewItems="all",
@@ -385,12 +404,29 @@ def main():
             except urllib.error.HTTPError as e:
                 print(f"  {name}: Lidarr не добавил ({e.code} {e.read()[:200].decode(errors='replace')})")
                 continue
-        added.append(f"{name} ({counts[k]})" + (f" = {found['artistName']}" if key(found["artistName"]) != k else ""))
+        added.append(f"{name} ({counts[k]})" + (f" = {found['artistName']}" if key(found["artistName"]) != k else "")
+                     + (" [композитор: только скачанное, профиль None]" if catalog else ""))
         by_mbid[found["foreignArtistId"]] = found  # «Drake» и «drake» в одном запуске — один исполнитель
+
+    # композиторы с каталогом в тысячи чужих записей забивают очередь: профиль None, Lidarr уберёт
+    # из Missing всё без файлов, а скачанное останется
+    all_albums = lidarr("GET", "album")
+    releases = collections.Counter(al["artistId"] for al in all_albums if al["monitored"])
+    catalogs = [a for a in artists if none_profile is not None and a["metadataProfileId"] != none_profile
+                and is_catalog(a, releases[a["id"]])]
+    if catalogs:
+        print(f"  {'переведены' if args.apply else 'переведу'} на профиль None (композиторы): "
+              + ", ".join(f"{a['artistName']} ({releases[a['id']]})" for a in catalogs))
+    if args.apply:
+        for a in catalogs:
+            a["metadataProfileId"] = none_profile
+            lidarr("PUT", f"artist/{a['id']}", a)
+            lidarr("POST", "command", {"name": "RefreshArtist", "artistId": a["id"]})
+    skip = {a["id"] for a in catalogs} | {a["id"] for a in artists if a["metadataProfileId"] == none_profile}
 
     # кто уже есть в Lidarr: следить за ним, его новыми релизами и всеми альбомами
     to_follow = [a for a in known.values() if not a["monitored"] or a.get("monitorNewItems") != "all"]
-    albums = [al["id"] for al in lidarr("GET", "album") if al["artistId"] in known and not al["monitored"]]
+    albums = [al["id"] for al in all_albums if al["artistId"] in known and al["artistId"] not in skip and not al["monitored"]]
     print(f"  {'включено' if args.apply else 'включу'} слежение: исполнителей {len(to_follow)}, альбомов {len(albums)}")
     if args.apply:
         for artist in to_follow:

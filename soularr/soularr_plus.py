@@ -7,9 +7,13 @@
   («*eatles Abbey Road») находит тысячи файлов. Если поиск ничего не дал, пробуем название без
   скобок и затем имя со звёздочками; исполнителей, которым помогли звёздочки, запоминаем и дальше
   ищем сразу так.
-* Очередь по приоритету (search_type = priority) вместо прохода по алфавиту: сначала альбомы и EP
-  исполнителей, добавленных за последние две недели, затем все альбомы, EP и только потом синглы.
-  Внутри — сначала то, что ещё не искали, затем популярное (оценки MusicBrainz) и новое.
+* Очередь по приоритету (search_type = priority) вместо прохода по алфавиту. Исполнители идут по
+  кругу: сначала лучший релиз каждого, потом второй и так далее, чтобы никто с тысячами релизов не
+  занимал все проходы. У тех, кого попросили в VaginaWave (тег vaginawave в Lidarr), вперёд идут
+  пять главных релизов. В каждом
+  проходе 4 места — синглам. У исполнителя первым идёт то, что ещё не искали, альбомы раньше EP,
+  затем популярное (оценки MusicBrainz) и новое.
+* Альбом из стоп-листа «не импортировался» через 14 дней ищется снова.
 * Повтор с паузой. Что не нашлось, снова ищем через 7 дней, потом через 14, 28 и не реже раза
   в 60 дней. Что нашлось, но не скачалось (пир пропал, очередь, не тот трек-лист), — через день,
   потом через 2, 4… до 30 дней: в следующий раз ответит другой пир.
@@ -33,7 +37,12 @@ import requests
 
 import soularr_core as core
 
-FRESH_DAYS = 14  # исполнители, добавленные недавно, идут первыми
+# Исполнители, которых попросили кнопкой «Скачать дискографию» в VaginaWave (тег Lidarr): их главные
+# релизы идут первыми. Добавленные ночным lidarr-artists.py по библиотеке — по кругу со всеми.
+REQUEST_TAG = "vaginawave"
+REQUESTED_TOP = 5
+SINGLES_PER_PASS = 4  # мест для синглов в каждом проходе: иначе до них очередь не доходит
+DENY_DAYS = 14  # через столько неудачный импорт снова пробуется
 TRACKS_TTL = 3 * 86400  # как часто обновлять список песен с альбомов исполнителя
 TRACKS_REFRESH_PER_RUN = 150
 NOTFOUND_BASE, NOTFOUND_MAX = 7 * 86400, 60 * 86400
@@ -256,18 +265,55 @@ def single_covered(album, titles):
     return all(p and p in have for p in parts)
 
 
-def _added(artist):
-    try:
-        return datetime.fromisoformat(artist.get("added", "").replace("Z", "+00:00")).timestamp()
-    except ValueError:
-        return 0
-
-
 TIER = {"Album": 1, "EP": 2, "Single": 4}
 
 
-def prioritized(records, st, now):
+def _sort_key(a, st):
+    tries = (st["albums"].get(str(a["id"])) or {}).get("n", 0)
+    votes = (a.get("ratings") or {}).get("votes", 0)
+    year = int((a.get("releaseDate") or "0")[:4] or 0)
+    return tries, TIER.get(a.get("albumType"), 5), -votes, -year, a["title"].casefold()
+
+
+def round_robin(items, st, requested_tag=None):
+    """Очередь по кругу: у каждого исполнителя сначала лучший релиз, потом второй и так далее.
+
+    Иначе исполнитель с тысячами релизов (Бах, Моцарт) занимает все проходы, и до остальных
+    очередь не доходит. У тех, кого попросили в VaginaWave, вперёд идут REQUESTED_TOP главных релизов."""
+    by_artist = {}
+    for a in items:
+        by_artist.setdefault(a["artistId"], []).append(a)
+    ranked = []
+    for albums in by_artist.values():
+        albums.sort(key=lambda a: _sort_key(a, st))
+        requested = requested_tag is not None and requested_tag in (albums[0]["artist"].get("tags") or [])
+        for rank, a in enumerate(albums):
+            ranked.append(((0 if requested and rank < REQUESTED_TOP else 1, rank, *_sort_key(a, st)), a))
+    ranked.sort(key=lambda x: x[0])
+    return [a for _, a in ranked]
+
+
+def interleave(main, singles, size):
+    """Проходы по size: в каждом SINGLES_PER_PASS синглов, остальное — альбомы и EP; кончилось одно — добираем другим."""
+    out, i, j = [], 0, 0
+    per_single = min(SINGLES_PER_PASS, size)
+    while i < len(main) or j < len(singles):
+        page_main, page_single = main[i:i + size - per_single], singles[j:j + per_single]
+        i, j = i + len(page_main), j + len(page_single)
+        short = size - len(page_main) - len(page_single)
+        if short and i < len(main):
+            page_main += main[i:i + short]
+            i += short
+        elif short and j < len(singles):
+            page_single += singles[j:j + short]
+            j += short
+        out += page_main + page_single
+    return out
+
+
+def prioritized(records, st, now, size=None):
     """Отсортированные кандидаты и сводка: что пропущено и почему."""
+    size = size or core.page_size or 15
     queued = _queued_ids()
     deny = core.load_failed_import_denylist(core.failed_import_denylist_file_path) if core.failed_import_denylist else {}
     stats = {"waiting": 0, "covered": 0, "denied": 0, "no_tracks_yet": 0}
@@ -286,35 +332,55 @@ def prioritized(records, st, now):
 
     singles = {a["artistId"] for a in pool if a.get("albumType") == "Single"}
     titles = album_titles(sorted(singles)) if singles else {}
-    fresh_after = now - FRESH_DAYS * 86400
-    ranked = []
+    main, single_pool = [], []
     for a in pool:
-        kind = a.get("albumType")
-        if kind == "Single":
+        if a.get("albumType") == "Single":
             covered = single_covered(a, titles)
             if covered is None:
                 stats["no_tracks_yet"] += 1
-                continue
-            if covered:
+            elif covered:
                 stats["covered"] += 1
-                continue
-        tier = TIER.get(kind, 5)
-        if _added(a["artist"]) >= fresh_after and tier < 4:
-            tier = 0
-        elif _added(a["artist"]) >= fresh_after and tier == 4:
-            tier = 3
-        tries = (st["albums"].get(str(a["id"])) or {}).get("n", 0)
-        votes = (a.get("ratings") or {}).get("votes", 0)
-        year = int((a.get("releaseDate") or "0")[:4] or 0)
-        ranked.append(((tier, tries, -votes, -year, a["title"].casefold()), a))
-    ranked.sort(key=lambda x: x[0])
-    return [a for _, a in ranked], stats
+            else:
+                single_pool.append(a)
+        else:
+            main.append(a)
+    tag = _request_tag()
+    return interleave(round_robin(main, st, tag), round_robin(single_pool, st, tag), size), stats
+
+
+def _request_tag():
+    try:
+        return next((t["id"] for t in _lidarr_get("tag") if t.get("label") == REQUEST_TAG), None)
+    except Exception:
+        return None
+
+
+def expire_denylist(now):
+    """Неудачный импорт — не приговор: через DENY_DAYS альбом снова ищется (другой пир, другое издание)."""
+    if not core.failed_import_denylist:
+        return 0
+    path = core.failed_import_denylist_file_path
+    deny = core.load_failed_import_denylist(path)
+    keep = {}
+    for key, entry in deny.items():
+        try:
+            failed = datetime.strptime(entry.get("failed_at", ""), "%Y-%m-%dT%H:%M:%S").timestamp()
+        except ValueError:
+            failed = now
+        if now - failed < DENY_DAYS * 86400:
+            keep[key] = entry
+    if len(keep) != len(deny):
+        core.save_failed_import_denylist(path, keep)
+    return len(deny) - len(keep)
 
 
 def get_records(missing):
     if core.search_type != "priority" or not missing:
         return _orig_get_records(missing)
     now = time.time()
+    expired = expire_denylist(now)
+    if expired:
+        core.logger.info(f"Failed imports older than {DENY_DAYS} days will be searched again: {expired}")
     st = load_state()
     records = _all_missing()
     ranked, stats = prioritized(records, st, now)
@@ -357,7 +423,7 @@ def plan():
     size = config.getint("Search Settings", "number_of_albums_to_grab", fallback=10)
     st = load_state()
     records = _all_missing()
-    ranked, stats = prioritized(records, st, time.time())
+    ranked, stats = prioritized(records, st, time.time(), size)
     kinds = {}
     for a in ranked:
         kinds[a.get("albumType")] = kinds.get(a.get("albumType"), 0) + 1
