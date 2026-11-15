@@ -281,7 +281,18 @@ def resolve(lidarr, name, albums, in_lidarr):
         known = [i for i in exact if i in in_lidarr]
         if len(known) == 1:
             return known[0], ""
+        if evidence is None and exact:  # одно имя ещё не значит один исполнитель: «J.S. Bach» — и группа из Уэльса
+            evidence, authors = album_hits(lidarr, albums) if albums else (collections.Counter(), {})
+        elsewhere = elsewhere_of(variant, exact, evidence, authors) if evidence is not None else []
         if len(exact) == 1:
+            # тот, кто уже в Lidarr и кого так зовут в псевдонимах, важнее тёзки с этим же именем
+            aliased = [c["foreignArtistId"] for c in found[:5] if c["foreignArtistId"] not in exact
+                       and c["foreignArtistId"] in in_lidarr and alias_match(variant, c["foreignArtistId"])]
+            if len(aliased) == 1:
+                return aliased[0], ""
+            other_wins = elsewhere and not evidence[exact[0]] and (len(elsewhere) == 1 or elsewhere[0][0] > elsewhere[1][0])
+            if other_wins:  # альбомы из библиотеки — у того, кого так зовут в псевдонимах (Johann Sebastian Bach)
+                return elsewhere[0][1], ""
             if not no_releases(exact[0]):
                 return exact[0], ""
             why = "в MusicBrainz есть только тёзка без релизов"
