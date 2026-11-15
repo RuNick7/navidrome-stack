@@ -16,6 +16,7 @@ Lidarr о каждой такой папке (ручной импорт: соп�
     50 4 * * * cd /root/navidrome-stack && python3 scripts/recover-imports.py --apply >> data/recover-imports.log 2>&1
 """
 import argparse
+import fcntl
 import importlib.util
 import json
 import os
@@ -25,6 +26,7 @@ import urllib.error
 
 STACK = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE = os.path.join(STACK, "data", "recover-imports.json")
+LOCK = os.path.join(STACK, "data", "recover-imports.lock")  # ночной запуск не пересечётся с ручным
 DENYLIST = os.path.join(STACK, "data", "soularr", "failed_imports.json")
 RECHECK_DAYS = 7
 SETTLE_HOURS = 48  # свежие загрузки ещё могут импортироваться сами
@@ -77,6 +79,11 @@ def main():
     p.add_argument("--apply", action="store_true", help="импортировать (без него только показать)")
     p.add_argument("--limit", type=int, default=0, help="сколько папок проверить за запуск (0 — все)")
     args = p.parse_args()
+    lock = open(LOCK, "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        sys.exit("recover-imports уже идёт")
 
     env = {**ts.load_env(os.path.join(STACK, ".env")), **os.environ}
     if not env.get("LIDARR_API_KEY"):
