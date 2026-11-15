@@ -35,9 +35,9 @@ env = {**load_env(os.path.join(STACK, ".env")), **os.environ}
 MUSIC = env.get("MUSIC_DIR", "/mnt/music")
 
 
-def get(url, headers=None):
+def get(url, headers=None, timeout=30):
     try:
-        with urllib.request.urlopen(urllib.request.Request(url, headers=headers or {}), timeout=30) as r:
+        with urllib.request.urlopen(urllib.request.Request(url, headers=headers or {}), timeout=timeout) as r:
             return json.load(r)
     except Exception as e:
         return {"_error": str(e)}
@@ -104,14 +104,15 @@ if env.get("LIDARR_API_KEY"):
     h = {"X-Api-Key": env["LIDARR_API_KEY"]}
     missing = get("http://127.0.0.1:8686/api/v1/wanted/missing?pageSize=1", h)
     queue = get("http://127.0.0.1:8686/api/v1/queue?pageSize=1", h)
+    # за сутки — тысячи событий: за 30 секунд ответ не успевал, и счётчики импорта были нулевыми
     hist = get("http://127.0.0.1:8686/api/v1/history/since?date="
-               + time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - HOURS * 3600)), h)
+               + time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - HOURS * 3600)), h, timeout=600)
     events = {}
     for e in hist if isinstance(hist, list) else []:
         events[e["eventType"]] = events.get(e["eventType"], 0) + 1
     imported_albums = {e.get("albumId") for e in (hist if isinstance(hist, list) else [])
                        if e.get("eventType") == "trackFileImported"}
-    albums = get("http://127.0.0.1:8686/api/v1/album", h)
+    albums = get("http://127.0.0.1:8686/api/v1/album", h, timeout=600)
     albums = albums if isinstance(albums, list) else []
     mon = [a for a in albums if a.get("monitored")]
     partial = [a for a in mon if 0 < a.get("statistics", {}).get("percentOfTracks", 0) < 100]

@@ -6,6 +6,10 @@ set -uo pipefail
 ROOT="${MUSIC_DIR:?MUSIC_DIR не задан}"
 BITRATE="${OPUS_BITRATE:-192k}"
 MIN_AGE="${MIN_AGE_MINUTES:-30}"
+# Загрузки Soulseek ждут импорта в Lidarr (Soularr, track-search): перекодирование посреди импорта
+# срывает его («Failed to import»). Там трогаем только то, что пролежало сутки и уже не импортируется.
+DOWNLOADS="$ROOT/soulseek"
+DOWNLOADS_MIN_AGE="${DOWNLOADS_MIN_AGE_MINUTES:-1440}"
 INTERVAL="${INTERVAL_SECONDS:-900}"
 TMP="${TMPDIR:-/tmp}/opus"
 mkdir -p "$TMP"
@@ -71,11 +75,16 @@ convert() {
   cp "$tmp" "$dst" && rm -f "$tmp" "$src" && echo "готово: $dst"
 }
 
+AUDIO=( \( -iname '*.flac' -o -iname '*.mp3' -o -iname '*.m4a' -o -iname '*.aac'
+         -o -iname '*.ogg' -o -iname '*.wav' -o -iname '*.alac' -o -iname '*.wma' \) )
+
 while true; do
-  find "$ROOT" \( -path "$ROOT/_playlists" -o -name failed_imports \) -prune -o -type f \
-    \( -iname '*.flac' -o -iname '*.mp3' -o -iname '*.m4a' -o -iname '*.aac' \
-       -o -iname '*.ogg' -o -iname '*.wav' -o -iname '*.alac' -o -iname '*.wma' \) \
-    -mmin +"$MIN_AGE" -print0 |
+  {
+    find "$ROOT" \( -path "$ROOT/_playlists" -o -path "$DOWNLOADS" -o -name failed_imports \) -prune -o -type f \
+      "${AUDIO[@]}" -mmin +"$MIN_AGE" -print0
+    [ -d "$DOWNLOADS" ] && find "$DOWNLOADS" -name failed_imports -prune -o -type f \
+      "${AUDIO[@]}" -mmin +"$DOWNLOADS_MIN_AGE" -print0
+  } |
     while IFS= read -r -d '' f; do grep -qxF -- "$f" "$FAILED" || convert "$f"; done
   [ "${RUN_ONCE:-false}" = "true" ] && exit 0
   sleep "$INTERVAL"
