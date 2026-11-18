@@ -17,6 +17,11 @@
 * Повтор с паузой. Что не нашлось, снова ищем через 7 дней, потом через 14, 28 и не реже раза
   в 60 дней. Что нашлось, но не скачалось (пир пропал, очередь, не тот трек-лист), — через день,
   потом через 2, 4… до 30 дней: в следующий раз ответит другой пир.
+* Выбор пира. Из нашедших альбом сначала берутся пиры со свободным слотом, короткой очередью и
+  быстрой отдачей (их ответы на поиск запоминаются). Если пир не отдал файлы, его до конца прохода
+  не берём и тут же пробуем следующего (до двух раз), а не ждём следующего дня. Пира, который за
+  неделю трижды не отдал файлы, ставим в конец списка. Альбом, который скачался, но Lidarr его не
+  принял, у другого пира заново не качаем.
 * Синглы-дубли. Сингл, все песни которого есть на альбоме или EP того же исполнителя в Lidarr,
   не ищем: песня придёт с альбомом.
 
@@ -34,6 +39,7 @@ import unicodedata
 from datetime import datetime, timezone
 
 import requests
+import slskd_api.apis.searches as slskd_searches
 
 import soularr_core as core
 
@@ -54,7 +60,14 @@ _orig_get_records = core.get_records
 _orig_search_for_album = core.search_for_album
 _orig_search_and_queue = core.search_and_queue
 _orig_grab_most_wanted = core.grab_most_wanted
+_orig_find_download = core.find_download
+_orig_cancel_and_delete = core.cancel_and_delete
+_orig_search_responses = slskd_searches.SearchesApi.search_responses
 _batch = {}
+_peers = {}  # пользователь → (есть свободный слот, длина очереди, скорость отдачи) из ответов поиска
+RETRY_PEERS = 2  # сколько раз за проход пробовать другого пира, если этот не отдал файлы
+BAD_PEER_FAILS = 3  # столько сорванных загрузок за неделю — пир идёт в конец списка
+BAD_PEER_DAYS = 7
 
 
 # --- состояние --------------------------------------------------------------------------------
@@ -159,17 +172,95 @@ def search_for_album(album):
     return False
 
 
+def search_responses(self, id):
+    """Ответы поиска как есть, а по пути запоминаем, у кого свободный слот, очередь и скорость."""
+    rows = _orig_search_responses(self, id)
+    for r in rows or []:
+        _peers[r.get("username")] = (bool(r.get("hasFreeUploadSlot")), int(r.get("queueLength") or 0),
+                                     int(r.get("uploadSpeed") or 0))
+    return rows
+
+
+def _bad_peers():
+    """Пиры, которые за неделю BAD_PEER_FAILS раз не отдали файлы («File not shared», не берут в очередь)."""
+    now = time.time()
+    return {u for u, p in load_state().get("peers", {}).items()
+            if p.get("fails", 0) >= BAD_PEER_FAILS and now - p.get("t", 0) < BAD_PEER_DAYS * 86400}
+
+
+def _peer_rank(user, bad=frozenset()):
+    free, queue, speed = _peers.get(user, (False, 10 ** 9, 0))
+    return (user in bad, not free, queue, -speed)
+
+
+def find_download(album, grab_list):
+    """Пиров пробуем не в порядке ответа на поиск, а сначала со свободным слотом, короткой очередью
+    и быстрой отдачей: чаще всего загрузка срывалась на пирах, которые не брали её в очередь."""
+    results = core.search_cache.get(album["id"])
+    if results:
+        bad = _bad_peers()
+        core.search_cache[album["id"]] = dict(sorted(results.items(), key=lambda kv: _peer_rank(kv[0], bad)))
+    return _orig_find_download(album, grab_list)
+
+
+def cancel_and_delete(files):
+    """Загрузка сорвалась: этого пира до конца прохода больше не берём (broken_user в Soularr),
+    а неделю помним, сколько раз он не отдал файлы."""
+    users = {f["username"] for f in files if f.get("username")}
+    for u in users:
+        if u not in core.broken_user:
+            core.broken_user.append(u)
+    if users:
+        st = load_state()
+        peers = st.setdefault("peers", {})
+        now = time.time()
+        for old in [u for u, p in peers.items() if now - p.get("t", 0) > BAD_PEER_DAYS * 86400]:
+            del peers[old]
+        for u in users:
+            p = peers.get(u)
+            peers[u] = {"fails": (p or {}).get("fails", 0) + 1, "t": int(now)}
+        _save("soularr-plus.json", st)
+    return _orig_cancel_and_delete(files)
+
+
 def search_and_queue(albums):
     grab_list, failed_search, failed_grab = _orig_search_and_queue(albums)
-    # failed_grab дополняется дальше, в monitor_downloads (пир пропал, таймаут): держим ссылку
-    _batch.update(albums=albums, failed_search=failed_search, failed_grab=failed_grab)
+    # failed_grab дополняется дальше, в monitor_downloads (пир пропал, таймаут): держим ссылку.
+    # Что не совпало ни с одной папкой уже сейчас — не повод пробовать другого пира.
+    _batch.update(albums=albums, failed_search=failed_search, failed_grab=failed_grab,
+                  nomatch={a["id"] for a in failed_grab})
     return grab_list, failed_search, failed_grab
+
+
+def retry_other_peers():
+    """Пир не отдал файлы — тут же пробуем следующего из того же поиска, а не через сутки."""
+    if not _batch:
+        return
+    originals = {a["id"]: a for a in _batch["albums"]}
+    for _ in range(RETRY_PEERS):
+        failed = [a for a in _batch["failed_grab"] if isinstance(a, dict) and "id" in a]
+        # скачалось, но Lidarr не принял — это не вина пира: качать то же у другого незачем
+        denied = core.load_failed_import_denylist(core.failed_import_denylist_file_path) if core.failed_import_denylist else {}
+        transfer = {a["id"] for a in failed if a["id"] not in _batch["nomatch"] and str(a["id"]) not in denied}
+        grab_list = {}
+        for album_id in transfer:
+            if album_id in originals and album_id in core.search_cache:
+                core.find_download(originals[album_id], grab_list)
+        if not grab_list:
+            return
+        retried = set(grab_list)
+        core.logger.info(f"Peers failed to upload, retrying with other peers: {len(retried)} albums")
+        again = []
+        core.monitor_downloads(grab_list, again)
+        _batch["failed_grab"] = [a for a in failed if a["id"] not in retried] + again
 
 
 def grab_most_wanted(albums):
     _batch.clear()
     try:
-        return _orig_grab_most_wanted(albums)
+        failed = _orig_grab_most_wanted(albums)
+        retry_other_peers()
+        return failed
     finally:
         record_outcomes()
 
@@ -407,6 +498,9 @@ core.get_records = get_records
 core.search_for_album = search_for_album
 core.search_and_queue = search_and_queue
 core.grab_most_wanted = grab_most_wanted
+core.find_download = find_download
+core.cancel_and_delete = cancel_and_delete
+slskd_searches.SearchesApi.search_responses = search_responses
 
 
 def plan():

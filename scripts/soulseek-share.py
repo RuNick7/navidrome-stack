@@ -10,10 +10,13 @@
     python3 scripts/soulseek-share.py             # показать, что попадёт в раздачу
     python3 scripts/soulseek-share.py --apply     # скопировать (по умолчанию 2 ГБ)
 
-После --apply slskd пересканирует раздачу сам при перезапуске, или:
-    curl -X PUT -H "X-API-Key: …" http://127.0.0.1:5030/api/v0/shares
+После --apply скрипт сам просит slskd пересканировать раздачу.
+
+Раз в сутки, 10 ГБ (многие пиры отвечают «File not shared» тем, у кого раздача маленькая):
+    20 5 * * * cd /root/navidrome-stack && /usr/bin/python3 scripts/soulseek-share.py --size 10 --apply >> data/soulseek-share.log 2>&1
 """
 import argparse
+import urllib.request
 import os
 import re
 import shutil
@@ -89,6 +92,14 @@ def main():
         if os.path.isdir(folder) and folder not in keep:
             shutil.rmtree(folder)  # выпало из списка самых слушаемых
     print("скопировано")
+    if env.get("SLSKD_API_KEY"):  # иначе slskd увидит новое только после перезапуска
+        req = urllib.request.Request("http://127.0.0.1:5030/api/v0/shares", method="PUT",
+                                     headers={"X-API-Key": env["SLSKD_API_KEY"]})
+        try:
+            urllib.request.urlopen(req, timeout=60).close()
+            print("slskd пересканирует раздачу")
+        except OSError as e:
+            print(f"slskd не принял пересканирование: {e}")
 
 
 if __name__ == "__main__":
