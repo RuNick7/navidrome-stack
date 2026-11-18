@@ -19,7 +19,9 @@
   потом через 2, 4… до 30 дней: в следующий раз ответит другой пир.
 * Выбор пира. Из нашедших альбом сначала берутся пиры со свободным слотом, короткой очередью и
   быстрой отдачей (их ответы на поиск запоминаются). Если пир не отдал файлы, его до конца прохода
-  не берём и тут же пробуем следующего (до двух раз), а не ждём следующего дня.
+  не берём и тут же пробуем следующего (до двух раз), а не ждём следующего дня. Пира, который за
+  неделю трижды не отдал файлы, ставим в конец списка. Альбом, который скачался, но Lidarr его не
+  принял, у другого пира заново не качаем.
 * Синглы-дубли. Сингл, все песни которого есть на альбоме или EP того же исполнителя в Lidarr,
   не ищем: песня придёт с альбомом.
 
@@ -64,6 +66,8 @@ _orig_search_responses = slskd_searches.SearchesApi.search_responses
 _batch = {}
 _peers = {}  # пользователь → (есть свободный слот, длина очереди, скорость отдачи) из ответов поиска
 RETRY_PEERS = 2  # сколько раз за проход пробовать другого пира, если этот не отдал файлы
+BAD_PEER_FAILS = 3  # столько сорванных загрузок за неделю — пир идёт в конец списка
+BAD_PEER_DAYS = 7
 
 
 # --- состояние --------------------------------------------------------------------------------
@@ -177,9 +181,16 @@ def search_responses(self, id):
     return rows
 
 
-def _peer_rank(user):
+def _bad_peers():
+    """Пиры, которые за неделю BAD_PEER_FAILS раз не отдали файлы («File not shared», не берут в очередь)."""
+    now = time.time()
+    return {u for u, p in load_state().get("peers", {}).items()
+            if p.get("fails", 0) >= BAD_PEER_FAILS and now - p.get("t", 0) < BAD_PEER_DAYS * 86400}
+
+
+def _peer_rank(user, bad=frozenset()):
     free, queue, speed = _peers.get(user, (False, 10 ** 9, 0))
-    return (not free, queue, -speed)
+    return (user in bad, not free, queue, -speed)
 
 
 def find_download(album, grab_list):
@@ -187,15 +198,28 @@ def find_download(album, grab_list):
     и быстрой отдачей: чаще всего загрузка срывалась на пирах, которые не брали её в очередь."""
     results = core.search_cache.get(album["id"])
     if results:
-        core.search_cache[album["id"]] = dict(sorted(results.items(), key=lambda kv: _peer_rank(kv[0])))
+        bad = _bad_peers()
+        core.search_cache[album["id"]] = dict(sorted(results.items(), key=lambda kv: _peer_rank(kv[0], bad)))
     return _orig_find_download(album, grab_list)
 
 
 def cancel_and_delete(files):
-    """Загрузка сорвалась: этого пира до конца прохода больше не берём (broken_user в Soularr)."""
-    for f in files:
-        if f.get("username") and f["username"] not in core.broken_user:
-            core.broken_user.append(f["username"])
+    """Загрузка сорвалась: этого пира до конца прохода больше не берём (broken_user в Soularr),
+    а неделю помним, сколько раз он не отдал файлы."""
+    users = {f["username"] for f in files if f.get("username")}
+    for u in users:
+        if u not in core.broken_user:
+            core.broken_user.append(u)
+    if users:
+        st = load_state()
+        peers = st.setdefault("peers", {})
+        now = time.time()
+        for old in [u for u, p in peers.items() if now - p.get("t", 0) > BAD_PEER_DAYS * 86400]:
+            del peers[old]
+        for u in users:
+            p = peers.get(u)
+            peers[u] = {"fails": (p or {}).get("fails", 0) + 1, "t": int(now)}
+        _save("soularr-plus.json", st)
     return _orig_cancel_and_delete(files)
 
 
@@ -215,7 +239,9 @@ def retry_other_peers():
     originals = {a["id"]: a for a in _batch["albums"]}
     for _ in range(RETRY_PEERS):
         failed = [a for a in _batch["failed_grab"] if isinstance(a, dict) and "id" in a]
-        transfer = {a["id"] for a in failed if a["id"] not in _batch["nomatch"]}
+        # скачалось, но Lidarr не принял — это не вина пира: качать то же у другого незачем
+        denied = core.load_failed_import_denylist(core.failed_import_denylist_file_path) if core.failed_import_denylist else {}
+        transfer = {a["id"] for a in failed if a["id"] not in _batch["nomatch"] and str(a["id"]) not in denied}
         grab_list = {}
         for album_id in transfer:
             if album_id in originals and album_id in core.search_cache:
