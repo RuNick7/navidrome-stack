@@ -12,7 +12,9 @@ Navidrome знает, кто есть в библиотеке, Lidarr — как
   исполнитель. Если тёзок несколько (Drake, Tony Bennett) или имя записано иначе (Skryptonite),
   решают альбомы из библиотеки (Lidarr ищет их по названию и называет исполнителя), псевдонимы и
   размер дискографии в метаданных Lidarr; без уверенности не угадывает;
-* включает слежение за исполнителем, за всеми его альбомами и за новыми релизами.
+* включает слежение за исполнителем, за всеми его альбомами и за новыми релизами;
+* классику (композиторов, оркестры, хоры, дирижёров, солистов) ставит на профиль метаданных None:
+  скачанное остаётся, остальное не ищется — иначе её общий репертуар забивает очередь.
 
 Качает Soularr: он берёт альбомы из «Missing» в Lidarr (очередь по приоритету — soularr/soularr_plus.py).
 Какие альбомы считаются, задаёт профиль метаданных Lidarr.
@@ -46,9 +48,24 @@ PAGE = 500
 FILLER = {"the", "a", "an", "and", "&", "и", "+"}
 AGENT = "lidarr-artists/2.0"
 METADATA = os.environ.get("LIDARR_METADATA_URL", "https://api.lidarr.audio/api/v0.4/")
-# Композитор с такой «дискографией» — это все записи его музыки чужими оркестрами (у Баха их 4,6 тыс.),
-# а не альбомы исполнителя. Его ставим на профиль метаданных None: скачанное остаётся, остальное не ищется.
-CATALOG_RELEASES = 150
+# Классика: «дискография» композитора — все записи его музыки чужими оркестрами (у Баха 4,6 тыс.), а у
+# оркестра, дирижёра и солиста — сотни записей общего репертуара. Каждый скачанный такой альбом приносит
+# в теги ещё оркестр, дирижёра и солиста по 3+ трека, и Missing растёт быстрее, чем качается. Классику
+# ставим на профиль метаданных None: скачанное остаётся, остальное не ищется.
+CLASSICAL = {"classical", "western classical", "romantic classical", "modern classical", "contemporary classical",
+             "classical period", "baroque", "renaissance", "medieval", "early music", "opera", "choral", "art song",
+             "chamber music", "orchestral", "symphony", "minimalism", "post-minimalism", "microtonal classical",
+             "japanese classical", "neoclassicism"}
+# композитор кино, игр и аниме выпускает свои альбомы (Хисаиси, Badelt): его дискографию качаем
+SCORE_GENRES = {"cinematic classical", "soundtrack", "film score", "film soundtrack", "video game music", "anime"}
+SCORE = re.compile(r"score|film|soundtrack|video game|anime", re.I)
+# без жанров в метаданных: по описанию MusicBrainz («cellist», «French tenor», «conductor»)
+ROLE = re.compile(r"compos|conduct|orchestr|pianist|violin|cellist|violist|harpsichord|organist|soprano|mezzo|"
+                  r"tenor|baritone|contralto|choir|lute|flautist|flutist|clarinet|oboist|bassoon|"
+                  r"композитор|дирижёр|пианист|скрипач|виолончел|оркестр|хор", re.I)
+NOT_ROLE = re.compile(r"jazz|rock|pop|rap|hip|dj|electronic|metal|punk|folk|singer|songwriter|band|producer|"
+                      r"blues|soul|r&b|country|musical|джаз|рок|поп|рэп", re.I)
+REQUEST_TAG = "vaginawave"  # этот тег VaginaWave ставит тем, чью дискографию попросили скачать
 ALBUMS_PER_ARTIST = 6  # сколько названий альбомов из библиотеки держать для сверки с Lidarr
 NOT_ALBUMS = {"", "singles", "single", "unknown album", "[unknown album]", "unknown", "explo"}
 
@@ -152,18 +169,16 @@ def metadata(mbid):
     return _meta[mbid]
 
 
-def is_catalog(artist, releases):
-    """Композитор с огромным каталогом чужих записей (Бах, Моцарт), а не исполнитель со своей дискографией."""
-    about = (artist.get("disambiguation") or "").casefold()
+def is_classical(artist):
+    """Композитор, оркестр, хор, дирижёр или солист классики: первый жанр в метаданных Lidarr классический,
+    а без жанров — тип «оркестр»/«хор» или описание MusicBrainz. Композиторы кино и игр — нет."""
+    about = artist.get("disambiguation") or ""
     genres = [g.casefold() for g in artist.get("genres") or []]
-    composer = "composer" in about or "композитор" in about or genres[:1] == ["classical"]
-    return composer and releases > CATALOG_RELEASES
-
-
-def own_releases(mbid):
-    """Студийные альбомы, EP и синглы исполнителя в метаданных Lidarr: столько он принесёт в Missing."""
-    return sum(1 for a in metadata(mbid).get("Albums") or []
-               if a.get("Type") in ("Album", "EP", "Single") and not a.get("SecondaryTypes"))
+    if SCORE.search(about) or SCORE_GENRES & set(genres):
+        return False
+    if genres:  # «pianist» у Элтона Джона и Оскара Питерсона: жанр Pop и Jazz решает
+        return genres[0] in CLASSICAL
+    return artist.get("artistType") in ("Orchestra", "Choir") or bool(ROLE.search(about) and not NOT_ROLE.search(about))
 
 
 def no_releases(mbid):
@@ -400,7 +415,7 @@ def main():
             missing.append(f"{name} — исключён в Lidarr")
             state[k] = now
             continue
-        catalog = none_profile is not None and is_catalog(found, own_releases(found["foreignArtistId"]))
+        catalog = none_profile is not None and is_classical(found)
         if args.apply:
             found.update(
                 qualityProfileId=root.get("defaultQualityProfileId") or 1,
@@ -416,18 +431,21 @@ def main():
                 print(f"  {name}: Lidarr не добавил ({e.code} {e.read()[:200].decode(errors='replace')})")
                 continue
         added.append(f"{name} ({counts[k]})" + (f" = {found['artistName']}" if key(found["artistName"]) != k else "")
-                     + (" [композитор: только скачанное, профиль None]" if catalog else ""))
+                     + (" [классика: только скачанное, профиль None]" if catalog else ""))
         by_mbid[found["foreignArtistId"]] = found  # «Drake» и «drake» в одном запуске — один исполнитель
 
-    # композиторы с каталогом в тысячи чужих записей забивают очередь: профиль None, Lidarr уберёт
-    # из Missing всё без файлов, а скачанное останется
+    # классика забивает очередь записями общего репертуара: профиль None, Lidarr уберёт из Missing всё
+    # без файлов, а скачанное останется. Кого попросили из VaginaWave (тег vaginawave), не трогаем.
     all_albums = lidarr("GET", "album")
-    releases = collections.Counter(al["artistId"] for al in all_albums if al["monitored"])
+    empty = collections.Counter(al["artistId"] for al in all_albums
+                                if al["monitored"] and not (al.get("statistics") or {}).get("trackFileCount"))
+    requested = {t["id"] for t in lidarr("GET", "tag") or [] if t.get("label") == REQUEST_TAG}
     catalogs = [a for a in artists if none_profile is not None and a["metadataProfileId"] != none_profile
-                and is_catalog(a, releases[a["id"]])]
+                and not requested & set(a.get("tags") or []) and is_classical(a)]
     if catalogs:
-        print(f"  {'переведены' if args.apply else 'переведу'} на профиль None (композиторы): "
-              + ", ".join(f"{a['artistName']} ({releases[a['id']]})" for a in catalogs))
+        print(f"  {'переведены' if args.apply else 'переведу'} на профиль None (классика), "
+              f"из Missing уйдёт {sum(empty[a['id']] for a in catalogs)}: "
+              + ", ".join(f"{a['artistName']} ({empty[a['id']]})" for a in sorted(catalogs, key=lambda a: -empty[a["id"]])))
     if args.apply:
         for a in catalogs:
             a["metadataProfileId"] = none_profile
