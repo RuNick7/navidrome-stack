@@ -218,7 +218,7 @@ def apply(plan, music):
     query = urllib.parse.urlencode({"u": env["ND_USER"], "t": token, "s": salt, "v": "1.16.1", "c": "dedupe", "f": "json"})
     for _ in range(30):  # Navidrome поднимается несколько секунд
         try:
-            urllib.request.urlopen(f"{env.get('ND_URL', 'http://127.0.0.1:4533')}/rest/startScan?{query}", timeout=10)
+            urllib.request.urlopen(f"{env.get('ND_URL', 'http://127.0.0.1:4533/navi')}/rest/startScan?{query}", timeout=10)
             print("Navidrome пересканирует библиотеку")
             break
         except Exception:

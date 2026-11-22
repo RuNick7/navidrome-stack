@@ -2,10 +2,29 @@
 	email {$ACME_EMAIL}
 }
 
-{$ND_DOMAIN}:{$HTTPS_PORT} {
+# Второе имя (ND_DOMAIN_ALIAS) обслуживается так же, со своим сертификатом.
+# Без него ND_DOMAIN_ALIAS равен ND_DOMAIN (см. docker-compose.yml), и Caddy склеивает повтор.
+{$ND_DOMAIN}:{$HTTPS_PORT}, {$ND_DOMAIN_ALIAS}:{$HTTPS_PORT} {
 	encode zstd gzip
 
-	# Volna: «Моя волна» и её веб-версия, живёт в /opt/volna
+	# Navidrome живёт под /navi (ND_BASEURL в docker-compose.yml): веб-интерфейс https://<домен>/navi
+	@navi path /navi /navi/*
+	handle @navi {
+		reverse_proxy navidrome:4533
+	}
+
+	# Subsonic API отвечает и в корне: приложениям и VaginaWave с адресом сервера без /navi
+	# ничего менять не нужно
+	handle /rest/* {
+		rewrite * /navi{uri}
+		reverse_proxy navidrome:4533
+	}
+
+	# Старые закладки на веб-интерфейс и публичные ссылки Navidrome
+	@old_navidrome path /app /app/* /share/*
+	redir @old_navidrome /navi{uri} 308
+
+	# VaginaWave по прежнему адресу /volna/: ссылки «Поделиться» и приложения, которые его запомнили
 	redir /volna /volna/ 308
 	handle_path /volna/* {
 		reverse_proxy volna:8765 {
@@ -13,28 +32,31 @@
 		}
 	}
 
+	# Всё остальное — VaginaWave («Моя волна» и её веб-версия, живёт в /opt/volna)
 	handle {
-		reverse_proxy navidrome:4533
+		reverse_proxy volna:8765 {
+			header_up -X-Forwarded-Prefix
+		}
 	}
 }
 
-{$ND_DOMAIN}:{$SLSKD_HTTPS_PORT} {
+{$ND_DOMAIN}:{$SLSKD_HTTPS_PORT}, {$ND_DOMAIN_ALIAS}:{$SLSKD_HTTPS_PORT} {
 	reverse_proxy slskd:5030
 }
 
-{$ND_DOMAIN}:{$EXPLO_HTTPS_PORT} {
+{$ND_DOMAIN}:{$EXPLO_HTTPS_PORT}, {$ND_DOMAIN_ALIAS}:{$EXPLO_HTTPS_PORT} {
 	reverse_proxy explo:7288
 }
 
-{$ND_DOMAIN}:{$AUDIOMUSE_HTTPS_PORT} {
+{$ND_DOMAIN}:{$AUDIOMUSE_HTTPS_PORT}, {$ND_DOMAIN_ALIAS}:{$AUDIOMUSE_HTTPS_PORT} {
 	reverse_proxy audiomuse-flask:8000
 }
 
-{$ND_DOMAIN}:{$FEISHIN_HTTPS_PORT} {
+{$ND_DOMAIN}:{$FEISHIN_HTTPS_PORT}, {$ND_DOMAIN_ALIAS}:{$FEISHIN_HTTPS_PORT} {
 	encode zstd gzip
 	reverse_proxy feishin:9180
 }
 
-{$ND_DOMAIN}:{$LIDARR_HTTPS_PORT} {
+{$ND_DOMAIN}:{$LIDARR_HTTPS_PORT}, {$ND_DOMAIN_ALIAS}:{$LIDARR_HTTPS_PORT} {
 	reverse_proxy lidarr:8686
 }

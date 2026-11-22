@@ -171,7 +171,7 @@ def main():
     for k in ("ND_USER", "ND_PASSWORD"):
         if not env.get(k):
             sys.exit(f"Нет {k} в .env")
-    nd = Navidrome(env.get("ND_URL", "http://127.0.0.1:4533"), env["ND_USER"], env["ND_PASSWORD"])
+    nd = Navidrome(env.get("ND_URL", "http://127.0.0.1:4533/navi"), env["ND_USER"], env["ND_PASSWORD"])
 
     playlists = nd.call("getPlaylists")["playlists"].get("playlist", [])
     auto = [p for p in playlists if AUTO.search(p["name"])]

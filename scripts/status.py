@@ -92,7 +92,7 @@ if env.get("ND_USER") and env.get("ND_PASSWORD"):
     salt = secrets.token_hex(6)
     q = urllib.parse.urlencode({"u": env["ND_USER"], "s": salt, "v": "1.16.1", "c": "status", "f": "json",
                                 "t": hashlib.md5((env["ND_PASSWORD"] + salt).encode()).hexdigest()})
-    r = get(f"http://127.0.0.1:4533/rest/getScanStatus?{q}")
+    r = get(f"http://127.0.0.1:4533/navi/rest/getScanStatus?{q}")
     s = r.get("subsonic-response", {}).get("scanStatus", {})
     print(f"  треков в базе: {s.get('count', '?')}, сканирование идёт: {s.get('scanning', '?')}, "
           f"последнее: {s.get('lastScan', '?')}" if s else f"  нет ответа: {r.get('_error', r)}")

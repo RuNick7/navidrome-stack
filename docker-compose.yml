@@ -23,6 +23,9 @@ services:
       TZ: ${TZ}
       ND_MUSICFOLDER: ${MUSIC_DIR}
       ND_DATAFOLDER: /data
+      # Корень домена отдан VaginaWave, Navidrome — под /navi (см. caddy/Caddyfile).
+      # Изнутри стека он тоже по http://navidrome:4533/navi
+      ND_BASEURL: /navi
       ND_PLAYLISTSPATH: _playlists
       ND_SCANNER_SCHEDULE: "@every 1h"
       ND_DEFAULTLANGUAGE: ru
@@ -58,7 +61,7 @@ services:
       SERVER_NAME: Navidrome
       SERVER_LOCK: "true"
       SERVER_TYPE: navidrome
-      SERVER_URL: https://${ND_DOMAIN}:${HTTPS_PORT}
+      SERVER_URL: https://${ND_DOMAIN}:${HTTPS_PORT}/navi
       ANALYTICS_DISABLED: "true"
       FS_GENERAL_LANGUAGE: ru
 
@@ -67,6 +70,7 @@ services:
     image: caddy:${CADDY_VERSION}
     environment:
       ND_DOMAIN: ${ND_DOMAIN}
+      ND_DOMAIN_ALIAS: ${ND_DOMAIN_ALIAS:-${ND_DOMAIN}}
       HTTPS_PORT: ${HTTPS_PORT}
       ACME_EMAIL: ${ACME_EMAIL}
       SLSKD_HTTPS_PORT: ${SLSKD_HTTPS_PORT}
