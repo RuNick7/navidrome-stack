@@ -7,7 +7,24 @@
 {$ND_DOMAIN}:{$HTTPS_PORT}, {$ND_DOMAIN_ALIAS}:{$HTTPS_PORT} {
 	encode zstd gzip
 
-	# Volna: «Моя волна» и её веб-версия, живёт в /opt/volna
+	# Navidrome живёт под /navi (ND_BASEURL в docker-compose.yml): веб-интерфейс https://<домен>/navi
+	@navi path /navi /navi/*
+	handle @navi {
+		reverse_proxy navidrome:4533
+	}
+
+	# Subsonic API отвечает и в корне: приложениям и VaginaWave с адресом сервера без /navi
+	# ничего менять не нужно
+	handle /rest/* {
+		rewrite * /navi{uri}
+		reverse_proxy navidrome:4533
+	}
+
+	# Старые закладки на веб-интерфейс и публичные ссылки Navidrome
+	@old_navidrome path /app /app/* /share/*
+	redir @old_navidrome /navi{uri} 308
+
+	# VaginaWave по прежнему адресу /volna/: ссылки «Поделиться» и приложения, которые его запомнили
 	redir /volna /volna/ 308
 	handle_path /volna/* {
 		reverse_proxy volna:8765 {
@@ -15,8 +32,11 @@
 		}
 	}
 
+	# Всё остальное — VaginaWave («Моя волна» и её веб-версия, живёт в /opt/volna)
 	handle {
-		reverse_proxy navidrome:4533
+		reverse_proxy volna:8765 {
+			header_up -X-Forwarded-Prefix
+		}
 	}
 }
 

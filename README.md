@@ -56,7 +56,7 @@ cp .env.example .env && nano .env       # ND_DOMAIN, ACME_EMAIL, HTTPS_PORT
 docker compose up -d
 ```
 
-Откройте `https://<домен>`, создайте администратора, загрузите несколько треков в `/mnt/music`.
+Откройте `https://<домен>/navi`, создайте администратора, загрузите несколько треков в `/mnt/music`.
 Готово, когда трек с Диска играет на телефоне через мобильный интернет.
 
 ## Фаза 2. Персонализация
@@ -65,7 +65,7 @@ docker compose up -d
 2. В Navidrome: *Настройки → Personal*: подключить Last.fm и ListenBrainz (токен с <https://listenbrainz.org/settings/>).
 3. Если есть история на Last.fm, импортируйте её в ListenBrainz (*Settings → Import*), чтобы рекомендации заработали сразу.
 4. *Настройки → Plugins*: включить `nd-lyrics`.
-5. Клиенты: Symfonium или Tempus (Android), play:Sub или Amperfy (iOS), Feishin (Mac/Windows и веб-версия на `https://<домен>:44444`). В клиенте включить перекодирование вне Wi‑Fi (AAC/Opus 128–256 kbps).
+5. Клиенты: Symfonium или Tempus (Android), play:Sub или Amperfy (iOS), Feishin (Mac/Windows и веб-версия на `https://<домен>:44444`). Адрес сервера в приложениях — `https://<домен>`, в Feishin на компьютере — `https://<домен>/navi`. В клиенте включить перекодирование вне Wi‑Fi (AAC/Opus 128–256 kbps).
 
 Готово, когда прослушивания видны в Last.fm и ListenBrainz, а в плеере есть синхронный текст.
 
@@ -169,7 +169,7 @@ docker compose up -d
 ssh -L 8000:127.0.0.1:8000 <сервер>   # первый вход: http://127.0.0.1:8000
 ```
 
-1. Setup Wizard: сервер Navidrome, URL `http://navidrome:4533`, логин и пароль Navidrome; задать логин, пароль и **API token** AudioMuse.
+1. Setup Wizard: сервер Navidrome, URL `http://navidrome:4533/navi`, логин и пароль Navidrome; задать логин, пароль и **API token** AudioMuse.
 2. После мастера (включена аутентификация) интерфейс доступен по `https://<домен>:33333`.
 3. Запустить анализ библиотеки ночью. Распознавание текстов (Whisper) отключено ради памяти. Новые треки AudioMuse анализирует сам: на странице *Cron* заведён ежедневный анализ в 03:30.
 4. В Navidrome *Настройки → Plugins → AudioMuse-AI*: URL `http://audiomuse-flask:8000`, тот же API token. Поле *Server Name* оставить пустым или вписать имя сервера из мастера AudioMuse, иначе AudioMuse отвечает «Unknown server».
@@ -180,7 +180,9 @@ ssh -L 8000:127.0.0.1:8000 <сервер>   # первый вход: http://127.
 
 ### VaginaWave
 
-Клиент с «Моей волной» живёт отдельным контейнером в `/opt/volna` (репозиторий RuNick7/VaginaWave), в той же сети Docker. Caddy отдаёт ему `https://<домен>/volna/`, остальное на основном домене, как и раньше, уходит в Navidrome.
+Клиент с «Моей волной» живёт отдельным контейнером в `/opt/volna` (репозиторий RuNick7/VaginaWave), в той же сети Docker. Caddy отдаёт ему корень домена `https://<домен>/` и прежний адрес `https://<домен>/volna/`.
+
+Navidrome живёт под `/navi` (`ND_BASEURL`): веб-интерфейс `https://<домен>/navi`, внутри стека — `http://navidrome:4533/navi` (скрипты, Explo, AudioMuse). Subsonic API (`/rest/*`) Caddy отдаёт в Navidrome и из корня, поэтому приложениям и VaginaWave с адресом `https://<домен>` менять ничего не нужно. Feishin на компьютере ходит и в API веб-интерфейса, ему нужен адрес `https://<домен>/navi`. Старые закладки `/app` и ссылки `/share/…` перенаправляются под `/navi`.
 
 ### Исполнители через запятую
 

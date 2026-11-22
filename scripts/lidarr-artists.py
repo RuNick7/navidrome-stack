@@ -356,7 +356,7 @@ def main():
     for k in ("ND_USER", "ND_PASSWORD", "LIDARR_API_KEY"):
         if not env.get(k):
             sys.exit(f"Нет {k} в .env")
-    nd = Navidrome(env.get("ND_URL", "http://127.0.0.1:4533"), env["ND_USER"], env["ND_PASSWORD"])
+    nd = Navidrome(env.get("ND_URL", "http://127.0.0.1:4533/navi"), env["ND_USER"], env["ND_PASSWORD"])
     lidarr = Api(env.get("LIDARR_URL", "http://127.0.0.1:8686"), "X-Api-Key", env["LIDARR_API_KEY"], "/api/v1")
     state = json.load(open(STATE)) if os.path.exists(STATE) else {}
     now = time.time()
