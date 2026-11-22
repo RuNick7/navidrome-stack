@@ -2,7 +2,8 @@
 """Ставит в Lidarr дискографии исполнителей, у которых в библиотеке 3 и больше трека.
 
 Navidrome знает, кто есть в библиотеке, Lidarr — какие у этих исполнителей альбомы.
-Скрипт считает треки каждого исполнителя (совместные треки «A;B» засчитываются обоим) и
+Скрипт считает треки каждого исполнителя (совместные треки «A;B» засчитываются обоим, но не состав
+альбома: сайдмен, который стоит в тегах половины треков чужого альбома, трека не получает) и
 для тех, у кого их не меньше --min-tracks:
 
 * добавляет исполнителя в Lidarr, если его там нет: по MusicBrainz ID из тегов, а без него —
@@ -65,6 +66,9 @@ ROLE = re.compile(r"compos|conduct|orchestr|pianist|violin|cellist|violist|harps
                   r"композитор|дирижёр|пианист|скрипач|виолончел|оркестр|хор", re.I)
 NOT_ROLE = re.compile(r"jazz|rock|pop|rap|hip|dj|electronic|metal|punk|folk|singer|songwriter|band|producer|"
                       r"blues|soul|r&b|country|musical|джаз|рок|поп|рэп", re.I)
+# Гость, который стоит в тегах хотя бы половины треков альбома (от 4 треков), — состав, а не фит
+PERSONNEL_SHARE = 0.5
+PERSONNEL_MIN_TRACKS = 4
 REQUEST_TAG = "vaginawave"  # этот тег VaginaWave ставит тем, чью дискографию попросили скачать
 ALBUMS_PER_ARTIST = 6  # сколько названий альбомов из библиотеки держать для сверки с Lidarr
 NOT_ALBUMS = {"", "singles", "single", "unknown album", "[unknown album]", "unknown", "explo"}
@@ -237,25 +241,52 @@ class Navidrome:
         return body
 
 
+def credits(items, fallback):
+    """Имена из «artists»/«albumArtists» трека в порядке тегов, «A;B» — двое."""
+    return list(dict.fromkeys(n.strip() for a in (items or [{"name": fallback or ""}])
+                              for n in a["name"].split(";") if n.strip()))
+
+
+def counted(tracks):
+    """Кому засчитать треки одного альбома: [(трек, [имена])].
+
+    Первый исполнитель трека и автор альбома — всегда. Остальные — если это гость на нескольких треках
+    (фит), а не состав альбома: у джазовой и классической пластинки в тегах каждого трека стоят все
+    музыканты («Marc Copland • Joey Baron • Drew Gress»), и каждый сайдмен получал по 8–15 треков
+    с одного альбома, а следом — всю свою дискографию."""
+    on = collections.Counter(n for _, names, _ in tracks for n in names)
+    out = []
+    for song, names, lead in tracks:
+        out.append((song, [n for i, n in enumerate(names)
+                           if i == 0 or key(n) == lead or len(tracks) < PERSONNEL_MIN_TRACKS
+                           or on[n] < PERSONNEL_SHARE * len(tracks)]))
+    return out
+
+
 def library_artists(nd):
     """Сколько треков у каждого исполнителя, его имя как в тегах, MusicBrainz ID и названия альбомов."""
     counts, names, albums_of, offset = collections.Counter(), {}, collections.defaultdict(list), 0
+    by_album = collections.defaultdict(list)
     while True:
         songs = nd.call("search3", query="", songCount=PAGE, songOffset=offset, artistCount=0, albumCount=0)
         songs = songs.get("searchResult3", {}).get("song", [])
         for s in songs:
-            credited = {n.strip() for a in (s.get("artists") or [{"name": s.get("artist", "")}]) for n in a["name"].split(";")}
+            lead = credits(s.get("albumArtists"), s.get("displayAlbumArtist"))
+            by_album[s.get("albumId") or s.get("album") or ""].append(
+                (s, credits(s.get("artists"), s.get("artist")), key(lead[0]) if lead else ""))
+        if len(songs) < PAGE:
+            break
+        offset += PAGE
+    for tracks in by_album.values():
+        for s, credited in counted(tracks):
             for n in credited:
-                if n and key(n) not in SKIP:
+                if key(n) not in SKIP:
                     counts[key(n)] += 1
                     names.setdefault(key(n), n)
                     album = s.get("album") or ""
                     if (key(album) not in NOT_ALBUMS and len(albums_of[key(n)]) < ALBUMS_PER_ARTIST
                             and album not in albums_of[key(n)]):
                         albums_of[key(n)].append(album)
-        if len(songs) < PAGE:
-            break
-        offset += PAGE
     mbids = {}
     for index in nd.call("getArtists").get("artists", {}).get("index", []):
         for a in index.get("artist", []):
