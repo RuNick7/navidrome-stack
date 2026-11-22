@@ -48,6 +48,8 @@ mkdir -p /mnt/music/explo /mnt/music/soulseek /mnt/music/_playlists   # от п�
 
 **Если на сервере remnanode** (Xray занимает 443): `HTTPS_PORT=8443` в `.env`. Сертификат выпустится через порт 80. Адрес в приложениях: `https://music.example.com:8443`.
 
+**Два имени.** `ND_DOMAIN_ALIAS` в `.env` — второе имя того же сервера: Caddy выпускает сертификат и на него и отдаёт по нему всё то же, на всех портах. Пригодится, если сервер из России открывается только через relay, а прежнее имя менять нельзя (например, оно же адрес VPN-ноды): новое имя ведите на relay и ставьте в `ND_DOMAIN`, прежнее — в `ND_DOMAIN_ALIAS`. После правки: `docker compose up -d caddy feishin`.
+
 ```bash
 cp .env.example .env && nano .env       # ND_DOMAIN, ACME_EMAIL, HTTPS_PORT
 ./scripts/install-plugins.sh

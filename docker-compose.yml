@@ -67,6 +67,7 @@ services:
     image: caddy:${CADDY_VERSION}
     environment:
       ND_DOMAIN: ${ND_DOMAIN}
+      ND_DOMAIN_ALIAS: ${ND_DOMAIN_ALIAS:-${ND_DOMAIN}}
       HTTPS_PORT: ${HTTPS_PORT}
       ACME_EMAIL: ${ACME_EMAIL}
       SLSKD_HTTPS_PORT: ${SLSKD_HTTPS_PORT}

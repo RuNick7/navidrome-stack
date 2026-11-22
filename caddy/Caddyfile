@@ -2,7 +2,9 @@
 	email {$ACME_EMAIL}
 }
 
-{$ND_DOMAIN}:{$HTTPS_PORT} {
+# Второе имя (ND_DOMAIN_ALIAS) обслуживается так же, со своим сертификатом.
+# Без него ND_DOMAIN_ALIAS равен ND_DOMAIN (см. docker-compose.yml), и Caddy склеивает повтор.
+{$ND_DOMAIN}:{$HTTPS_PORT}, {$ND_DOMAIN_ALIAS}:{$HTTPS_PORT} {
 	encode zstd gzip
 
 	# Volna: «Моя волна» и её веб-версия, живёт в /opt/volna
@@ -18,23 +20,23 @@
 	}
 }
 
-{$ND_DOMAIN}:{$SLSKD_HTTPS_PORT} {
+{$ND_DOMAIN}:{$SLSKD_HTTPS_PORT}, {$ND_DOMAIN_ALIAS}:{$SLSKD_HTTPS_PORT} {
 	reverse_proxy slskd:5030
 }
 
-{$ND_DOMAIN}:{$EXPLO_HTTPS_PORT} {
+{$ND_DOMAIN}:{$EXPLO_HTTPS_PORT}, {$ND_DOMAIN_ALIAS}:{$EXPLO_HTTPS_PORT} {
 	reverse_proxy explo:7288
 }
 
-{$ND_DOMAIN}:{$AUDIOMUSE_HTTPS_PORT} {
+{$ND_DOMAIN}:{$AUDIOMUSE_HTTPS_PORT}, {$ND_DOMAIN_ALIAS}:{$AUDIOMUSE_HTTPS_PORT} {
 	reverse_proxy audiomuse-flask:8000
 }
 
-{$ND_DOMAIN}:{$FEISHIN_HTTPS_PORT} {
+{$ND_DOMAIN}:{$FEISHIN_HTTPS_PORT}, {$ND_DOMAIN_ALIAS}:{$FEISHIN_HTTPS_PORT} {
 	encode zstd gzip
 	reverse_proxy feishin:9180
 }
 
-{$ND_DOMAIN}:{$LIDARR_HTTPS_PORT} {
+{$ND_DOMAIN}:{$LIDARR_HTTPS_PORT}, {$ND_DOMAIN_ALIAS}:{$LIDARR_HTTPS_PORT} {
 	reverse_proxy lidarr:8686
 }
